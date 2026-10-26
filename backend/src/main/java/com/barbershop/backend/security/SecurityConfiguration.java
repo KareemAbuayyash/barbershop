@@ -24,8 +24,10 @@ public class SecurityConfiguration {
 		http
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.GET, "/api/services", "/api/services/*").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/booking-settings").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
 						.requestMatchers("/api/services/**").authenticated()
+						.requestMatchers("/api/booking-settings/**").authenticated()
 						.anyRequest().denyAll())
 				.httpBasic(Customizer.withDefaults())
 				.formLogin(form -> form.disable())

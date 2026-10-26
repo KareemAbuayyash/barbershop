@@ -42,7 +42,7 @@ class BackendApplicationTests {
 	@Test
 	void migrationCreatesTheInitialDatabaseFoundation() {
 		assertThat(flyway.info().current()).isNotNull();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
 
 		Integer createdTables = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
@@ -56,6 +56,20 @@ class BackendApplicationTests {
 				"SELECT COUNT(*) FROM booking_settings WHERE new_bookings_disabled = TRUE",
 				Integer.class);
 		assertThat(defaultSettings).isEqualTo(1);
+
+		Integer settingsCount = jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM booking_settings",
+				Integer.class);
+		assertThat(settingsCount).isEqualTo(1);
+
+		Integer singletonConstraintCount = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM information_schema.table_constraints
+				WHERE table_schema = current_schema()
+				  AND table_name = 'booking_settings'
+				  AND constraint_name = 'uq_booking_settings_singleton_key'
+				""", Integer.class);
+		assertThat(singletonConstraintCount).isEqualTo(1);
 	}
 
 	@Test

@@ -38,6 +38,9 @@ public class BookingSettings {
 	@Column(name = "new_bookings_disabled", nullable = false)
 	private boolean newBookingsDisabled = true;
 
+	@Column(name = "singleton_key", nullable = false, unique = true, insertable = false, updatable = false)
+	private boolean singletonKey = true;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -85,6 +88,10 @@ public class BookingSettings {
 
 	public boolean isNewBookingsDisabled() {
 		return newBookingsDisabled;
+	}
+
+	public boolean isSingletonKey() {
+		return singletonKey;
 	}
 
 	public Instant getCreatedAt() {
