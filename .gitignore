@@ -1,0 +1,21 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Java / Spring Boot (future backend)
+target/
