@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.Rollback;
@@ -49,6 +50,9 @@ class ServiceApiIntegrationTests {
 
 	@Autowired
 	private EntityManager entityManager;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
 	@Test
 	@Transactional
@@ -201,8 +205,20 @@ class ServiceApiIntegrationTests {
 	void deactivatingServiceDoesNotChangeBookingSnapshots() throws Exception {
 		ServiceEntity service = serviceRepository.saveAndFlush(new ServiceEntity(
 				"Classic cut", "A service", new BigDecimal("25.50"), 45));
-		Booking booking = bookingRepository.saveAndFlush(
-				new Booking(null, service, java.time.Instant.now().plusSeconds(3600), null));
+		UUID bookingId = UUID.randomUUID();
+		jdbcTemplate.update("""
+				INSERT INTO bookings (
+				    id, service_id, starts_at, status, service_name_snapshot,
+				    service_price_snapshot, service_duration_snapshot_minutes, booking_mode
+				)
+				VALUES (?, ?, ?, 'PENDING', ?, ?, ?, 'LEGACY')
+				""",
+				bookingId,
+				service.getId(),
+				java.sql.Timestamp.from(java.time.Instant.now().plusSeconds(3600)),
+				service.getName(),
+				service.getPrice(),
+				service.getDurationMinutes());
 
 		mockMvc.perform(patch("/api/services/{id}/active", service.getId())
 						.with(csrf())
@@ -215,7 +231,7 @@ class ServiceApiIntegrationTests {
 
 		entityManager.flush();
 		entityManager.clear();
-		Booking persistedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+		Booking persistedBooking = bookingRepository.findById(bookingId).orElseThrow();
 		assertThat(persistedBooking.getServiceNameSnapshot()).isEqualTo("Classic cut");
 		assertThat(persistedBooking.getServicePriceSnapshot()).isEqualByComparingTo("25.50");
 		assertThat(persistedBooking.getServiceDurationSnapshotMinutes()).isEqualTo(45);

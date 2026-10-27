@@ -10,11 +10,14 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 
 /**
- * Service mutations are temporarily authenticated-only until application-specific
- * barber/admin accounts and authorization are introduced. Spring Boot's generated
- * development credentials are not a production authentication system. Clients can
- * obtain a session-backed CSRF token from GET /api/csrf and must retain the session
- * cookie and send the returned token in the X-CSRF-TOKEN header for mutations.
+ * Management mutations are temporarily authenticated-only using HTTP Basic until
+ * application-specific barber/admin accounts, roles, and authorization are introduced.
+ * Authentication does not currently establish a barber/admin role. Spring Boot's
+ * generated development credentials are not a production authentication system.
+ * Role-based authorization is a deployment blocker: do not expose management endpoints
+ * in production until real barber/admin authentication and authorization are configured.
+ * Clients can obtain a session-backed CSRF token from GET /api/csrf and must retain the
+ * session cookie and send the returned token in the X-CSRF-TOKEN header for mutations.
  */
 @Configuration
 public class SecurityConfiguration {
@@ -26,6 +29,8 @@ public class SecurityConfiguration {
 						.requestMatchers(HttpMethod.GET, "/api/services", "/api/services/*").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/booking-settings").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/bookings").permitAll()
+						.requestMatchers("/api/bookings", "/api/bookings/**").authenticated()
 						.requestMatchers("/api/services/**").authenticated()
 						.requestMatchers("/api/booking-settings/**").authenticated()
 						.anyRequest().denyAll())

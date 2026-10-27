@@ -2,6 +2,7 @@ package com.barbershop.backend.booking;
 
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class BookingSettingsApiIntegrationTests {
 
+	private static final UUID SEED_SETTINGS_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 	private static final String SETTINGS_JSON = """
 			{
 			  "exactAppointmentEnabled": true,
@@ -35,6 +37,29 @@ class BookingSettingsApiIntegrationTests {
 			  "newBookingsDisabled": false
 			}
 			""";
+
+	@BeforeEach
+	void resetBookingSettingsSeed() {
+		jdbcTemplate.update("""
+				INSERT INTO booking_settings (
+				    id,
+				    exact_appointment_enabled,
+				    confirmation_request_enabled,
+				    day_queue_enabled,
+				    same_day_queue_enabled,
+				    new_bookings_disabled,
+				    singleton_key
+				) VALUES (?, false, false, false, false, true, true)
+				ON CONFLICT (id) DO UPDATE SET
+				    exact_appointment_enabled = EXCLUDED.exact_appointment_enabled,
+				    confirmation_request_enabled = EXCLUDED.confirmation_request_enabled,
+				    day_queue_enabled = EXCLUDED.day_queue_enabled,
+				    same_day_queue_enabled = EXCLUDED.same_day_queue_enabled,
+				    new_bookings_disabled = EXCLUDED.new_bookings_disabled,
+				    updated_at = CURRENT_TIMESTAMP
+				""",
+			SEED_SETTINGS_ID);
+	}
 
 	@Autowired
 	private MockMvc mockMvc;

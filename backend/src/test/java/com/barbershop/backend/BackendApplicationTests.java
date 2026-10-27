@@ -42,7 +42,7 @@ class BackendApplicationTests {
 	@Test
 	void migrationCreatesTheInitialDatabaseFoundation() {
 		assertThat(flyway.info().current()).isNotNull();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
 
 		Integer createdTables = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
@@ -78,8 +78,21 @@ class BackendApplicationTests {
 	void bookingKeepsServiceSnapshotsWhenServiceChanges() {
 		ServiceEntity service = serviceRepository.saveAndFlush(
 				new ServiceEntity("Classic cut", "A sample service", new BigDecimal("25.50"), 45));
-		Booking booking = bookingRepository.saveAndFlush(
-				new Booking(null, service, Instant.now().plusSeconds(3600), null));
+		java.util.UUID bookingId = java.util.UUID.randomUUID();
+		Instant startsAt = Instant.now().plusSeconds(3600);
+		jdbcTemplate.update("""
+				INSERT INTO bookings (
+				    id, service_id, starts_at, status, service_name_snapshot,
+				    service_price_snapshot, service_duration_snapshot_minutes, booking_mode
+				)
+				VALUES (?, ?, ?, 'PENDING', ?, ?, ?, 'LEGACY')
+				""",
+				bookingId,
+				service.getId(),
+				java.sql.Timestamp.from(startsAt),
+				service.getName(),
+				service.getPrice(),
+				service.getDurationMinutes());
 
 		service.setName("Updated cut");
 		service.setPrice(new BigDecimal("30.00"));
@@ -87,7 +100,7 @@ class BackendApplicationTests {
 		serviceRepository.flush();
 		entityManager.clear();
 
-		Booking reloadedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+		Booking reloadedBooking = bookingRepository.findById(bookingId).orElseThrow();
 		assertThat(reloadedBooking.getServiceNameSnapshot()).isEqualTo("Classic cut");
 		assertThat(reloadedBooking.getServicePriceSnapshot()).isEqualByComparingTo("25.50");
 		assertThat(reloadedBooking.getServiceDurationSnapshotMinutes()).isEqualTo(45);

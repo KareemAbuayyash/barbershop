@@ -2,6 +2,8 @@ package com.barbershop.backend.booking;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.hibernate.annotations.UuidGenerator;
@@ -40,8 +42,18 @@ public class Booking {
 	@JoinColumn(name = "service_id", nullable = false)
 	private ServiceEntity service;
 
-	@Column(name = "starts_at", nullable = false)
+	@Enumerated(EnumType.STRING)
+	@Column(name = "booking_mode", nullable = false, length = 32)
+	private BookingMode bookingMode;
+
+	@Column(name = "starts_at")
 	private Instant startsAt;
+
+	@Column(name = "queue_date")
+	private LocalDate queueDate;
+
+	@Column(name = "queue_position")
+	private Integer queuePosition;
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "status", nullable = false, length = 20)
@@ -68,10 +80,20 @@ public class Booking {
 	protected Booking() {
 	}
 
-	public Booking(CustomerEntity customer, ServiceEntity service, Instant startsAt, String notes) {
+	public Booking(
+			CustomerEntity customer,
+			ServiceEntity service,
+			BookingMode bookingMode,
+			Instant startsAt,
+			LocalDate queueDate,
+			Integer queuePosition,
+			String notes) {
 		this.customer = customer;
-		this.service = service;
+		this.service = Objects.requireNonNull(service, "service must not be null");
+		this.bookingMode = Objects.requireNonNull(bookingMode, "bookingMode must not be null");
 		this.startsAt = startsAt;
+		this.queueDate = queueDate;
+		this.queuePosition = queuePosition;
 		this.notes = notes;
 		this.serviceNameSnapshot = service.getName();
 		this.servicePriceSnapshot = service.getPrice();
@@ -106,8 +128,20 @@ public class Booking {
 		return service;
 	}
 
+	public BookingMode getBookingMode() {
+		return bookingMode;
+	}
+
 	public Instant getStartsAt() {
 		return startsAt;
+	}
+
+	public LocalDate getQueueDate() {
+		return queueDate;
+	}
+
+	public Integer getQueuePosition() {
+		return queuePosition;
 	}
 
 	public BookingStatus getStatus() {
@@ -140,6 +174,10 @@ public class Booking {
 
 	public void setStartsAt(Instant startsAt) {
 		this.startsAt = startsAt;
+	}
+
+	public void setQueuePosition(Integer queuePosition) {
+		this.queuePosition = queuePosition;
 	}
 
 	public void setStatus(BookingStatus status) {
