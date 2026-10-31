@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@ActiveProfiles("test")
 @AutoConfigureMockMvc
 class ServiceApiIntegrationTests {
 
@@ -82,7 +84,7 @@ class ServiceApiIntegrationTests {
 	@Test
 	@Transactional
 	@Rollback
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void createsServiceAndReturnsItsLocation() throws Exception {
 		long servicesBefore = serviceRepository.count();
 
@@ -108,7 +110,7 @@ class ServiceApiIntegrationTests {
 	}
 
 	@Test
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void rejectsInvalidServiceCreationWithConsistentBadRequest() throws Exception {
 		mockMvc.perform(post("/api/services")
 						.with(csrf())
@@ -130,7 +132,7 @@ class ServiceApiIntegrationTests {
 	}
 
 	@Test
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void rejectsPricesWithMoreThanTwoDecimalPlaces() throws Exception {
 		mockMvc.perform(post("/api/services")
 						.with(csrf())
@@ -150,7 +152,7 @@ class ServiceApiIntegrationTests {
 	@Test
 	@Transactional
 	@Rollback
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void updatesExistingServiceAndReturnsNotFoundForMissingService() throws Exception {
 		ServiceEntity existing = serviceRepository.saveAndFlush(new ServiceEntity(
 				"Classic cut", "Original description", new BigDecimal("25.50"), 45));
@@ -183,7 +185,7 @@ class ServiceApiIntegrationTests {
 	@Test
 	@Transactional
 	@Rollback
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void changesServiceActivation() throws Exception {
 		ServiceEntity service = serviceRepository.saveAndFlush(new ServiceEntity(
 				"Classic cut", "A service", new BigDecimal("25.50"), 45));
@@ -201,7 +203,7 @@ class ServiceApiIntegrationTests {
 	@Test
 	@Transactional
 	@Rollback
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void deactivatingServiceDoesNotChangeBookingSnapshots() throws Exception {
 		ServiceEntity service = serviceRepository.saveAndFlush(new ServiceEntity(
 				"Classic cut", "A service", new BigDecimal("25.50"), 45));
@@ -265,7 +267,7 @@ class ServiceApiIntegrationTests {
 	}
 
 	@Test
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void csrfEndpointProvidesTokenForUnsafeRequests() throws Exception {
 		MvcResult tokenResult = mockMvc.perform(get("/api/csrf"))
 				.andExpect(status().isOk())
@@ -306,7 +308,7 @@ class ServiceApiIntegrationTests {
 	}
 
 	@Test
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void malformedJsonReturnsControlledBadRequestWithoutInternalDetails() throws Exception {
 		String response = mockMvc.perform(post("/api/services")
 						.with(csrf())

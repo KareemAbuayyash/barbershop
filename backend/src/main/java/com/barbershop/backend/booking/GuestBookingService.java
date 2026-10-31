@@ -22,6 +22,7 @@ import com.barbershop.backend.customer.CustomerEntity;
 import com.barbershop.backend.customer.CustomerRepository;
 import com.barbershop.backend.service.ServiceEntity;
 import com.barbershop.backend.service.ServiceRepository;
+import com.barbershop.backend.security.RateLimitService;
 
 @Service
 public class GuestBookingService {
@@ -37,6 +38,7 @@ public class GuestBookingService {
 	private final ServiceRepository serviceRepository;
 	private final JdbcTemplate jdbcTemplate;
 	private final ObjectMapper objectMapper;
+	private final RateLimitService rateLimitService;
 
 	public GuestBookingService(
 			BookingRepository bookingRepository,
@@ -44,22 +46,28 @@ public class GuestBookingService {
 			CustomerRepository customerRepository,
 			ServiceRepository serviceRepository,
 			JdbcTemplate jdbcTemplate,
-			ObjectMapper objectMapper) {
+			ObjectMapper objectMapper,
+			RateLimitService rateLimitService) {
 		this.bookingRepository = bookingRepository;
 		this.bookingSettingsRepository = bookingSettingsRepository;
 		this.customerRepository = customerRepository;
 		this.serviceRepository = serviceRepository;
 		this.jdbcTemplate = jdbcTemplate;
 		this.objectMapper = objectMapper;
+		this.rateLimitService = rateLimitService;
 	}
 
 	@Transactional
-	public BookingCreationResult createBooking(String idempotencyKey, GuestBookingRequest request) {
+	public BookingCreationResult createBooking(
+			String idempotencyKey,
+			GuestBookingRequest request,
+			String remoteAddress) {
 		ValidatedRequest validated = validateAndNormalize(idempotencyKey, request);
 		byte[] fingerprint = fingerprint(validated);
 		if (!reserveIdempotencyKey(validated.idempotencyKey(), fingerprint)) {
 			return replayExisting(validated.idempotencyKey(), fingerprint);
 		}
+		rateLimitService.consumeBookingAttempt(remoteAddress);
 
 		BookingSettings settings = bookingSettingsRepository.findBySingletonKeyTrue()
 				.orElseThrow(() -> new BookingApiException(

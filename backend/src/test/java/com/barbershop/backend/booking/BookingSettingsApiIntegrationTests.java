@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@ActiveProfiles("test")
 @AutoConfigureMockMvc
 class BookingSettingsApiIntegrationTests {
 
@@ -88,7 +90,7 @@ class BookingSettingsApiIntegrationTests {
 	@Test
 	@Transactional
 	@Rollback
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void authenticatedUpdateWithValidCsrfUpdatesTheExistingSettingsRow() throws Exception {
 		UUID seededId = bookingSettingsRepository.findBySingletonKeyTrue().orElseThrow().getId();
 
@@ -118,7 +120,7 @@ class BookingSettingsApiIntegrationTests {
 	}
 
 	@Test
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void updateRejectsMissingAndInvalidCsrfTokens() throws Exception {
 		mockMvc.perform(put("/api/booking-settings")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -133,7 +135,7 @@ class BookingSettingsApiIntegrationTests {
 	}
 
 	@Test
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void invalidSettingsRequestReturnsProblemDetails() throws Exception {
 		mockMvc.perform(put("/api/booking-settings")
 						.with(csrf())
@@ -167,7 +169,7 @@ class BookingSettingsApiIntegrationTests {
 	@Test
 	@Transactional
 	@Rollback
-	@WithMockUser
+	@WithMockUser(roles = "OWNER")
 	void missingSettingsReturnServiceUnavailableWithoutCreatingARow() throws Exception {
 		bookingSettingsRepository.deleteAll();
 		bookingSettingsRepository.flush();

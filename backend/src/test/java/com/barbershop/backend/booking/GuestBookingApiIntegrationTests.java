@@ -23,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ import com.barbershop.backend.service.ServiceEntity;
 import com.barbershop.backend.service.ServiceRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -41,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@ActiveProfiles("test")
 @AutoConfigureMockMvc
 class GuestBookingApiIntegrationTests {
 
@@ -300,6 +303,28 @@ class GuestBookingApiIntegrationTests {
 	}
 
 	@Test
+	@Transactional
+	@Rollback
+	void guestBookingRateLimitAppliesToNewRequestsButNotIdempotentReplays() throws Exception {
+		enableAllBookingModes();
+		ServiceEntity service = createService();
+		GuestBookingRequest request = request(
+				BookingMode.CONFIRMATION_REQUEST, service, null, null, null, "rate-limited");
+		String remoteAddress = "203.0.113.72";
+
+		for (int attempt = 0; attempt < 10; attempt++) {
+			postBookingFromIp("rate-limit-key-" + attempt, request, remoteAddress)
+					.andExpect(status().isCreated());
+		}
+		postBookingFromIp("rate-limit-blocked", request, remoteAddress)
+				.andExpect(status().isTooManyRequests())
+				.andExpect(header().exists("Retry-After"));
+
+		postBookingFromIp("rate-limit-key-0", request, remoteAddress)
+				.andExpect(status().isCreated());
+	}
+
+	@Test
 	void concurrentSameKeyRequestsCreateOneBookingAndReplay() throws Exception {
 		ServiceEntity service = createService();
 		Map<String, Object> originalSettings = currentBookingSettings();
@@ -430,21 +455,33 @@ class GuestBookingApiIntegrationTests {
 						.content(body))
 				.andExpect(status().isCreated());
 
-		mockMvc.perform(get("/api/bookings"))
+		mockMvc.perform(get("/api/bookings")
+						.with(user("owner").roles("OWNER")))
 				.andExpect(status().isOk());
 		mockMvc.perform(post("/api/bookings/" + UUID.randomUUID())
 						.with(csrf())
 						.header("Idempotency-Key", "other-path-key")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(body))
-				.andExpect(status().isMethodNotAllowed());
+						.andExpect(status().isForbidden());
 	}
 
 	private org.springframework.test.web.servlet.ResultActions postBooking(
 			String key,
 			GuestBookingRequest request) throws Exception {
+		return postBookingFromIp(key, request, "test-" + UUID.randomUUID());
+	}
+
+	private org.springframework.test.web.servlet.ResultActions postBookingFromIp(
+			String key,
+			GuestBookingRequest request,
+			String remoteAddress) throws Exception {
 		return mockMvc.perform(post("/api/bookings")
 				.with(csrf())
+				.with(servletRequest -> {
+					servletRequest.setRemoteAddr(remoteAddress);
+					return servletRequest;
+				})
 				.header("Idempotency-Key", key)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(json(request)));

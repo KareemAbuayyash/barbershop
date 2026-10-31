@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.flywaydb.core.Flyway;
@@ -22,6 +23,7 @@ import com.barbershop.backend.service.ServiceRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@ActiveProfiles("test")
 class BackendApplicationTests {
 
 	@Autowired
@@ -42,15 +44,17 @@ class BackendApplicationTests {
 	@Test
 	void migrationCreatesTheInitialDatabaseFoundation() {
 		assertThat(flyway.info().current()).isNotNull();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
 
 		Integer createdTables = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
 				FROM information_schema.tables
 				WHERE table_schema = current_schema()
-				  AND table_name IN ('services', 'customers', 'bookings', 'booking_settings')
+				  AND table_name IN (
+				      'services', 'customers', 'bookings', 'booking_settings', 'management_accounts'
+				  )
 				""", Integer.class);
-		assertThat(createdTables).isEqualTo(4);
+		assertThat(createdTables).isEqualTo(5);
 
 		Integer defaultSettings = jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM booking_settings WHERE new_bookings_disabled = TRUE",
@@ -70,6 +74,17 @@ class BackendApplicationTests {
 				  AND constraint_name = 'uq_booking_settings_singleton_key'
 				""", Integer.class);
 		assertThat(singletonConstraintCount).isEqualTo(1);
+
+		Integer ownerRoleConstraints = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM information_schema.table_constraints
+				WHERE table_schema = current_schema()
+				  AND table_name = 'management_accounts'
+				  AND constraint_name IN (
+				      'chk_management_accounts_role', 'uq_management_accounts_role'
+				  )
+				""", Integer.class);
+		assertThat(ownerRoleConstraints).isEqualTo(2);
 	}
 
 	@Test

@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,8 +43,10 @@ public class BookingController {
 	@PostMapping
 	public ResponseEntity<?> createGuestBooking(
 			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-			@Valid @RequestBody GuestBookingRequest request) {
-		BookingCreationResult result = guestBookingService.createBooking(idempotencyKey, request);
+			@Valid @RequestBody GuestBookingRequest request,
+			HttpServletRequest servletRequest) {
+		BookingCreationResult result = guestBookingService.createBooking(
+				idempotencyKey, request, servletRequest.getRemoteAddr());
 		ResponseEntity.BodyBuilder response = ResponseEntity.status(result.status());
 		if (result.location() != null) {
 			response.header(HttpHeaders.LOCATION, result.location());

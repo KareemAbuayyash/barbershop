@@ -19,6 +19,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.hibernate.exception.ConstraintViolationException;
 
 import com.barbershop.backend.booking.BookingApiException;
+import com.barbershop.backend.security.RateLimitExceededException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -30,6 +31,17 @@ public class ApiExceptionHandler {
 				exception.getMessage());
 		problem.setTitle(exception.getTitle());
 		return ResponseEntity.status(exception.getStatus()).body(problem);
+	}
+
+	@ExceptionHandler(RateLimitExceededException.class)
+	public ResponseEntity<ProblemDetail> handleRateLimit(RateLimitExceededException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.TOO_MANY_REQUESTS,
+				"Too many requests. Please try again later.");
+		problem.setTitle("Request limit exceeded");
+		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+				.header("Retry-After", Long.toString(exception.getRetryAfterSeconds()))
+				.body(problem);
 	}
 
 	@ExceptionHandler({DataIntegrityViolationException.class, TransactionSystemException.class})

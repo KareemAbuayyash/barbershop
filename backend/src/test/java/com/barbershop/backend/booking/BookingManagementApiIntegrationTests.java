@@ -22,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@ActiveProfiles("test")
 @AutoConfigureMockMvc
 class BookingManagementApiIntegrationTests {
 
@@ -109,7 +111,7 @@ class BookingManagementApiIntegrationTests {
 				null);
 
 		mockMvc.perform(get("/api/bookings")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.param("date", date.toString())
 						.param("status", "PENDING")
 						.param("mode", "DAY_QUEUE")
@@ -124,16 +126,16 @@ class BookingManagementApiIntegrationTests {
 				.andExpect(jsonPath("$.size").value(1));
 
 		mockMvc.perform(get("/api/bookings")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.param("size", "101"))
 				.andExpect(status().isBadRequest());
 		mockMvc.perform(get("/api/bookings")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.param("page", "1000")
 						.param("size", "100"))
 				.andExpect(status().isOk());
 		mockMvc.perform(get("/api/bookings")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.param("page", "1001")
 						.param("size", "100"))
 				.andExpect(status().isBadRequest())
@@ -150,14 +152,14 @@ class BookingManagementApiIntegrationTests {
 		UUID third = insertBooking(BookingMode.DAY_QUEUE, null, date, 3, BookingStatus.CONFIRMED, "Third", null);
 
 		mockMvc.perform(patch("/api/bookings/queue/reorder")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("date", date, "bookingIds", List.of(third, first, second)))))
 				.andExpect(status().isOk());
 
 		mockMvc.perform(get("/api/bookings")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.param("date", date.toString())
 						.param("page", "0")
 						.param("size", "2"))
@@ -168,7 +170,7 @@ class BookingManagementApiIntegrationTests {
 				.andExpect(jsonPath("$.content[1].queuePosition").value(5));
 
 		mockMvc.perform(get("/api/bookings")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.param("date", date.toString())
 						.param("page", "1")
 						.param("size", "2"))
@@ -205,7 +207,7 @@ class BookingManagementApiIntegrationTests {
 		assertThat(location).isEqualTo("/api/bookings/" + bookingId);
 
 		mockMvc.perform(get(location)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager")))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER")))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(bookingId.toString()))
 				.andExpect(jsonPath("$.customerName").value("Location guest"));
@@ -227,7 +229,7 @@ class BookingManagementApiIntegrationTests {
 				"202 555 0101");
 
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", id)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("CONFIRMED"))
@@ -237,7 +239,7 @@ class BookingManagementApiIntegrationTests {
 				.andExpect(jsonPath("$.customerName").value("Guest"));
 
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", id)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isConflict());
 		assertThat(jdbcTemplate.queryForObject(
@@ -268,19 +270,19 @@ class BookingManagementApiIntegrationTests {
 				null);
 
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", withProposal)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("CONFIRMED"))
 				.andExpect(jsonPath("$.startsAt").isNotEmpty());
 
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", withoutProposal)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isBadRequest());
 		Instant acceptedTime = Instant.now().plusSeconds(7200);
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", withoutProposal)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("startsAt", acceptedTime))))
@@ -307,7 +309,7 @@ class BookingManagementApiIntegrationTests {
 				null);
 
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", id)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("CONFIRMED"))
@@ -341,15 +343,15 @@ class BookingManagementApiIntegrationTests {
 				null);
 
 		mockMvc.perform(patch("/api/bookings/{id}/complete", pending)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isConflict());
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", cancelled)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isConflict());
 		MvcResult missing = mockMvc.perform(patch("/api/bookings/{id}/confirm", UUID.randomUUID())
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isNotFound())
 				.andReturn();
@@ -370,7 +372,7 @@ class BookingManagementApiIntegrationTests {
 				"Cancelled appointment",
 				null);
 		mockMvc.perform(patch("/api/bookings/{id}/cancel", cancelled)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("CANCELLED"));
@@ -387,7 +389,7 @@ class BookingManagementApiIntegrationTests {
 				"Replacement appointment",
 				null);
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", replacement)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isOk());
 
@@ -401,7 +403,7 @@ class BookingManagementApiIntegrationTests {
 				"Completed appointment",
 				null);
 		mockMvc.perform(patch("/api/bookings/{id}/complete", completed)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("COMPLETED"));
@@ -418,7 +420,7 @@ class BookingManagementApiIntegrationTests {
 				"Future appointment",
 				null);
 		mockMvc.perform(patch("/api/bookings/{id}/complete", futureAppointment)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.title").value("Booking has not started"));
@@ -436,7 +438,7 @@ class BookingManagementApiIntegrationTests {
 				"Queue appointment",
 				null);
 		mockMvc.perform(patch("/api/bookings/{id}/complete", confirmedQueue)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("COMPLETED"))
@@ -458,7 +460,7 @@ class BookingManagementApiIntegrationTests {
 		jdbcTemplate.update("UPDATE booking_settings SET new_bookings_disabled = TRUE WHERE singleton_key = TRUE");
 
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", id)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("startsAt", Instant.now().plusSeconds(3600)))))
@@ -517,7 +519,7 @@ class BookingManagementApiIntegrationTests {
 		UUID completed = insertBooking(BookingMode.DAY_QUEUE, null, date, 4, BookingStatus.COMPLETED, "Completed", null);
 
 		mockMvc.perform(patch("/api/bookings/queue/reorder")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("date", date, "bookingIds", List.of(second, first)))))
@@ -538,13 +540,13 @@ class BookingManagementApiIntegrationTests {
 				date)).isEqualTo(4);
 
 		mockMvc.perform(patch("/api/bookings/queue/reorder")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("date", date, "bookingIds", List.of(first, first)))))
 				.andExpect(status().isBadRequest());
 		mockMvc.perform(patch("/api/bookings/queue/reorder")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("date", date, "bookingIds", List.of(first)))))
@@ -558,7 +560,7 @@ class BookingManagementApiIntegrationTests {
 				"Other date guest",
 				null);
 		mockMvc.perform(patch("/api/bookings/queue/reorder")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("date", date, "bookingIds", List.of(first, second, foreignDate)))))
@@ -690,7 +692,7 @@ class BookingManagementApiIntegrationTests {
 			throw new IllegalStateException("Timed out waiting to start concurrent confirmation.");
 		}
 		return mockMvc.perform(patch("/api/bookings/{id}/confirm", bookingId)
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andReturn();
 	}
@@ -705,7 +707,7 @@ class BookingManagementApiIntegrationTests {
 			throw new IllegalStateException("Timed out waiting to start concurrent queue reorder.");
 		}
 		return mockMvc.perform(patch("/api/bookings/queue/reorder")
-						.with(SecurityMockMvcRequestPostProcessors.user("manager"))
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json(Map.of("date", date, "bookingIds", ids))))
