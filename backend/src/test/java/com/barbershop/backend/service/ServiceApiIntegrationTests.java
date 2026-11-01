@@ -85,6 +85,31 @@ class ServiceApiIntegrationTests {
 	@Transactional
 	@Rollback
 	@WithMockUser(roles = "OWNER")
+	void ownerCanListActiveAndInactiveServicesForManagement() throws Exception {
+		serviceRepository.saveAndFlush(new ServiceEntity(
+				"Active cut", "Available service", new BigDecimal("24.50"), 30));
+		ServiceEntity inactive = new ServiceEntity(
+				"Inactive cut", "Unavailable service", new BigDecimal("18.00"), 20);
+		inactive.setActive(false);
+		serviceRepository.saveAndFlush(inactive);
+
+		mockMvc.perform(get("/api/services/manage"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[*].name", hasItem("Active cut")))
+				.andExpect(jsonPath("$[*].name", hasItem("Inactive cut")))
+				.andExpect(jsonPath("$[?(@.name == 'Inactive cut')].active").value(false));
+	}
+
+	@Test
+	void publicCannotReadManagementServiceCatalog() throws Exception {
+		mockMvc.perform(get("/api/services/manage"))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	@Transactional
+	@Rollback
+	@WithMockUser(roles = "OWNER")
 	void createsServiceAndReturnsItsLocation() throws Exception {
 		long servicesBefore = serviceRepository.count();
 

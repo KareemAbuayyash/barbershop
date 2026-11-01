@@ -1,34 +1,95 @@
 import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import AuthCard from '../components/AuthCard'
+import { useAuth } from '../useAuth'
+import { apiRequest, getErrorMessage } from '../../../lib/api'
 
 function RegisterPage() {
+  const { user, isLoading, login } = useAuth()
+  const navigate = useNavigate()
   const [message, setMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setMessage('إنشاء الحساب غير متاح حالياً. لم يتم إنشاء حساب أو إرسال بيانات.')
+    setMessage('')
+    setIsSubmitting(true)
+    const formData = new FormData(event.currentTarget)
+    const username = String(formData.get('username')).trim()
+    const password = String(formData.get('password'))
+
+    try {
+      await apiRequest('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          username,
+          displayName: String(formData.get('displayName')).trim(),
+          phoneNumber: String(formData.get('phoneNumber')).trim(),
+          password,
+        }),
+      })
+      const authenticatedUser = await login(username, password)
+      navigate(
+        authenticatedUser.authorities.includes('ROLE_CUSTOMER') ? '/my-bookings' : '/',
+        { replace: true },
+      )
+    } catch (error) {
+      setMessage(getErrorMessage(error, 'تعذر إنشاء الحساب. تحقق من البيانات وحاول مرة أخرى.'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (isLoading) {
+    return <div className="page-content auth-page" role="status">جارٍ التحقق من الجلسة...</div>
+  }
+  if (user?.authorities.includes('ROLE_OWNER')) {
+    return <Navigate to="/owner" replace />
+  }
+  if (user?.authorities.includes('ROLE_CUSTOMER')) {
+    return <Navigate to="/my-bookings" replace />
   }
 
   return (
     <div className="page-content auth-page">
       <AuthCard
-        eyebrow="انضم إلينا"
-        title="إنشاء حساب"
-        description="املأ البيانات التالية. إنشاء الحساب غير متاح حتى ربط الخدمة الخلفية."
+        eyebrow="مساحة العميل"
+        title="إنشاء حساب عميل"
+        description="أنشئ حسابك لمتابعة حجوزاتك. حسابات العملاء لا تملك صلاحيات إدارة المحل."
       >
-        <form className="site-form" onSubmit={handleSubmit}>
+        <form className="site-form" onSubmit={(event) => void handleSubmit(event)}>
+          <label htmlFor="register-username">اسم المستخدم</label>
+          <input
+            id="register-username"
+            name="username"
+            type="text"
+            autoComplete="username"
+            minLength={3}
+            maxLength={64}
+            pattern="[A-Za-z0-9._-]+"
+            title="استخدم الأحرف الإنجليزية أو الأرقام أو النقطة أو الشرطة السفلية أو الشرطة."
+            required
+          />
           <label htmlFor="register-name">الاسم الكامل</label>
-          <input id="register-name" name="name" type="text" autoComplete="name" minLength={2} required />
+          <input
+            id="register-name"
+            name="displayName"
+            type="text"
+            autoComplete="name"
+            minLength={2}
+            maxLength={150}
+            required
+          />
           <label htmlFor="register-phone">رقم الهاتف</label>
           <input
             id="register-phone"
-            name="phone"
+            name="phoneNumber"
             type="tel"
             inputMode="tel"
             autoComplete="tel"
-            pattern="[0-9+\s()-]{8,20}"
-            title="أدخل رقم هاتف من ٨ إلى ٢٠ خانة، باستخدام الأرقام أو + أو المسافات أو الأقواس أو الشرطة."
+            minLength={8}
+            maxLength={32}
+            pattern="[0-9+\s()-]+"
             required
           />
           <label htmlFor="register-password">كلمة المرور</label>
@@ -37,7 +98,8 @@ function RegisterPage() {
             name="password"
             type="password"
             autoComplete="new-password"
-            minLength={8}
+            minLength={12}
+            maxLength={72}
             aria-describedby="password-help"
             onChange={(event) => {
               const confirmation = event.currentTarget.form?.elements.namedItem('confirmPassword')
@@ -49,26 +111,29 @@ function RegisterPage() {
             }}
             required
           />
-          <span className="field-help" id="password-help">يجب ألا تقل كلمة المرور عن ٨ أحرف.</span>
+          <span className="field-help" id="password-help">يجب ألا تقل كلمة المرور عن ١٢ حرفاً.</span>
           <label htmlFor="register-confirm-password">تأكيد كلمة المرور</label>
           <input
             id="register-confirm-password"
             name="confirmPassword"
             type="password"
             autoComplete="new-password"
-            minLength={8}
+            minLength={12}
+            maxLength={72}
             onChange={(event) => {
-              const password = event.currentTarget.form?.elements.namedItem('password')
-              if (password instanceof HTMLInputElement) {
+              const passwordInput = event.currentTarget.form?.elements.namedItem('password')
+              if (passwordInput instanceof HTMLInputElement) {
                 event.currentTarget.setCustomValidity(
-                  event.currentTarget.value === password.value ? '' : 'كلمتا المرور غير متطابقتين.',
+                  event.currentTarget.value === passwordInput.value ? '' : 'كلمتا المرور غير متطابقتين.',
                 )
               }
             }}
             required
           />
-          <button className="button button--primary form-submit" type="submit">إنشاء حساب</button>
-          {message && <p className="form-message" role="status">{message}</p>}
+          <button className="button button--primary form-submit" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'جارٍ إنشاء الحساب...' : 'إنشاء حساب'}
+          </button>
+          {message && <p className="form-message" role="alert">{message}</p>}
           <p className="auth-switch">لديك حساب؟ <Link to="/login">تسجيل الدخول</Link></p>
         </form>
       </AuthCard>

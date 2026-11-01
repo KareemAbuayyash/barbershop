@@ -67,12 +67,17 @@ public class SecurityConfiguration {
 			ApiSecurityErrorHandler securityErrorHandler) throws Exception {
 		http
 				.authorizeHttpRequests(authorize -> authorize
+						.requestMatchers(HttpMethod.GET, "/api/services/manage").hasRole("OWNER")
 						.requestMatchers(HttpMethod.GET, "/api/services", "/api/services/*").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/booking-settings").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/bookings").permitAll()
-						.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/logout").permitAll()
+						.requestMatchers(HttpMethod.POST,
+								"/api/auth/login",
+								"/api/auth/register",
+								"/api/auth/logout").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
+						.requestMatchers(HttpMethod.GET, "/api/customer/bookings").hasRole("CUSTOMER")
 						.requestMatchers(HttpMethod.GET, "/api/bookings", "/api/bookings/*").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PATCH,
 								"/api/bookings/*/confirm",

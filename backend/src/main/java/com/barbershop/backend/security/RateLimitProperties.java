@@ -10,6 +10,8 @@ public class RateLimitProperties {
 	private int maxTrackedAddresses = 10_000;
 	private int loginMaxFailures = 5;
 	private Duration loginWindow = Duration.ofMinutes(15);
+	private int registrationMaxAttempts = 5;
+	private Duration registrationWindow = Duration.ofMinutes(15);
 	private int bookingMaxAttempts = 10;
 	private Duration bookingWindow = Duration.ofMinutes(10);
 
@@ -35,6 +37,22 @@ public class RateLimitProperties {
 
 	public void setLoginWindow(Duration loginWindow) {
 		this.loginWindow = loginWindow;
+	}
+
+	public int getRegistrationMaxAttempts() {
+		return registrationMaxAttempts;
+	}
+
+	public void setRegistrationMaxAttempts(int registrationMaxAttempts) {
+		this.registrationMaxAttempts = registrationMaxAttempts;
+	}
+
+	public Duration getRegistrationWindow() {
+		return registrationWindow;
+	}
+
+	public void setRegistrationWindow(Duration registrationWindow) {
+		this.registrationWindow = registrationWindow;
 	}
 
 	public int getBookingMaxAttempts() {

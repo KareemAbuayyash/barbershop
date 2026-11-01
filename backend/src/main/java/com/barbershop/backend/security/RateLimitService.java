@@ -29,6 +29,14 @@ public class RateLimitService {
 		buckets.remove(key("login", remoteAddress));
 	}
 
+	public synchronized void consumeRegistrationAttempt(String remoteAddress) {
+		consume(
+				"registration",
+				remoteAddress,
+				properties.getRegistrationMaxAttempts(),
+				properties.getRegistrationWindow());
+	}
+
 	public synchronized void consumeBookingAttempt(String remoteAddress) {
 		consume("booking", remoteAddress, properties.getBookingMaxAttempts(), properties.getBookingWindow());
 	}

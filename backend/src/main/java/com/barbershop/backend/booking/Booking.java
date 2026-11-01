@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.hibernate.annotations.UuidGenerator;
 
 import com.barbershop.backend.customer.CustomerEntity;
+import com.barbershop.backend.customer.CustomerAccount;
 import com.barbershop.backend.service.ServiceEntity;
 
 import jakarta.persistence.Column;
@@ -37,6 +38,10 @@ public class Booking {
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "customer_id")
 	private CustomerEntity customer;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "customer_account_id")
+	private CustomerAccount customerAccount;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "service_id", nullable = false)
@@ -100,6 +105,19 @@ public class Booking {
 		this.serviceDurationSnapshotMinutes = service.getDurationMinutes();
 	}
 
+	public Booking(
+			CustomerEntity customer,
+			CustomerAccount customerAccount,
+			ServiceEntity service,
+			BookingMode bookingMode,
+			Instant startsAt,
+			LocalDate queueDate,
+			Integer queuePosition,
+			String notes) {
+		this(customer, service, bookingMode, startsAt, queueDate, queuePosition, notes);
+		this.customerAccount = customerAccount;
+	}
+
 	@PrePersist
 	private void setCreationTimestamps() {
 		Instant now = Instant.now();
@@ -122,6 +140,10 @@ public class Booking {
 
 	public CustomerEntity getCustomer() {
 		return customer;
+	}
+
+	public CustomerAccount getCustomerAccount() {
+		return customerAccount;
 	}
 
 	public ServiceEntity getService() {

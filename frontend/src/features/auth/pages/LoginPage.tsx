@@ -1,13 +1,50 @@
 import { useState, type FormEvent } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import AuthCard from '../components/AuthCard'
+import { useAuth } from '../useAuth'
+import { getErrorMessage } from '../../../lib/api'
 
 function LoginPage() {
+  const { user, isLoading, login } = useAuth()
+  const navigate = useNavigate()
   const [message, setMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setMessage('تسجيل الدخول غير متاح حالياً. لم يتم إرسال بياناتك.')
+    setMessage('')
+    setIsSubmitting(true)
+    const formData = new FormData(event.currentTarget)
+
+    try {
+      const authenticatedUser = await login(
+        String(formData.get('username')),
+        String(formData.get('password')),
+      )
+      navigate(
+        authenticatedUser.authorities.includes('ROLE_OWNER')
+          ? '/owner'
+          : authenticatedUser.authorities.includes('ROLE_CUSTOMER')
+            ? '/my-bookings'
+            : '/',
+        { replace: true },
+      )
+    } catch (error) {
+      setMessage(getErrorMessage(error, 'تعذر تسجيل الدخول. حاول مرة أخرى.'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (isLoading) {
+    return <div className="page-content auth-page" role="status">جارٍ التحقق من الجلسة...</div>
+  }
+  if (user?.authorities.includes('ROLE_OWNER')) {
+    return <Navigate to="/owner" replace />
+  }
+  if (user?.authorities.includes('ROLE_CUSTOMER')) {
+    return <Navigate to="/my-bookings" replace />
   }
 
   return (
@@ -15,15 +52,16 @@ function LoginPage() {
       <AuthCard
         eyebrow="مرحباً بعودتك"
         title="تسجيل الدخول"
-        description="أدخل بريدك الإلكتروني أو رقم هاتفك وكلمة المرور."
+        description="أدخل بيانات حسابك، وسيتم توجيهك تلقائياً حسب صلاحياته."
       >
         <form className="site-form" onSubmit={handleSubmit}>
-          <label htmlFor="login-identifier">البريد الإلكتروني أو رقم الهاتف</label>
+          <label htmlFor="login-username">اسم المستخدم</label>
           <input
-            id="login-identifier"
-            name="identifier"
+            id="login-username"
+            name="username"
             type="text"
             autoComplete="username"
+            maxLength={64}
             required
           />
           <label htmlFor="login-password">كلمة المرور</label>
@@ -34,14 +72,13 @@ function LoginPage() {
             autoComplete="current-password"
             required
           />
-          <div className="form-options">
-            <Link to="/forgot-password">نسيت كلمة المرور؟</Link>
-          </div>
-          <button className="button button--primary form-submit" type="submit">تسجيل الدخول</button>
-          {message && <p className="form-message" role="status">{message}</p>}
-          <p className="auth-switch">ليس لديك حساب؟ <Link to="/register">إنشاء حساب</Link></p>
+          <button className="button button--primary form-submit" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول'}
+          </button>
+          {message && <p className="form-message" role="alert">{message}</p>}
         </form>
-        <p className="form-disclaimer">واجهة تجريبية فقط؛ لا يوجد تسجيل دخول أو إرسال بيانات حالياً.</p>
+        <p className="form-disclaimer">حسابات العملاء متاحة للتسجيل، أما حساب المالك فيُجهّز من إعدادات النظام فقط.</p>
+        <p className="auth-switch">ليس لديك حساب؟ <Link to="/register">إنشاء حساب عميل</Link></p>
       </AuthCard>
     </div>
   )

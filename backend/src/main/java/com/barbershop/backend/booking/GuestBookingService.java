@@ -19,6 +19,8 @@ import tools.jackson.databind.ObjectMapper;
 import com.barbershop.backend.booking.dto.GuestBookingRequest;
 import com.barbershop.backend.booking.dto.GuestBookingResponse;
 import com.barbershop.backend.customer.CustomerEntity;
+import com.barbershop.backend.customer.CustomerAccount;
+import com.barbershop.backend.customer.CustomerAccountRepository;
 import com.barbershop.backend.customer.CustomerRepository;
 import com.barbershop.backend.service.ServiceEntity;
 import com.barbershop.backend.service.ServiceRepository;
@@ -35,6 +37,7 @@ public class GuestBookingService {
 	private final BookingRepository bookingRepository;
 	private final BookingSettingsRepository bookingSettingsRepository;
 	private final CustomerRepository customerRepository;
+	private final CustomerAccountRepository customerAccountRepository;
 	private final ServiceRepository serviceRepository;
 	private final JdbcTemplate jdbcTemplate;
 	private final ObjectMapper objectMapper;
@@ -44,6 +47,7 @@ public class GuestBookingService {
 			BookingRepository bookingRepository,
 			BookingSettingsRepository bookingSettingsRepository,
 			CustomerRepository customerRepository,
+			CustomerAccountRepository customerAccountRepository,
 			ServiceRepository serviceRepository,
 			JdbcTemplate jdbcTemplate,
 			ObjectMapper objectMapper,
@@ -51,6 +55,7 @@ public class GuestBookingService {
 		this.bookingRepository = bookingRepository;
 		this.bookingSettingsRepository = bookingSettingsRepository;
 		this.customerRepository = customerRepository;
+		this.customerAccountRepository = customerAccountRepository;
 		this.serviceRepository = serviceRepository;
 		this.jdbcTemplate = jdbcTemplate;
 		this.objectMapper = objectMapper;
@@ -61,7 +66,8 @@ public class GuestBookingService {
 	public BookingCreationResult createBooking(
 			String idempotencyKey,
 			GuestBookingRequest request,
-			String remoteAddress) {
+			String remoteAddress,
+			String customerUsername) {
 		ValidatedRequest validated = validateAndNormalize(idempotencyKey, request);
 		byte[] fingerprint = fingerprint(validated);
 		if (!reserveIdempotencyKey(validated.idempotencyKey(), fingerprint)) {
@@ -88,12 +94,17 @@ public class GuestBookingService {
 						"The selected service is not available."));
 		CustomerEntity customer = customerRepository.saveAndFlush(
 				new CustomerEntity(validated.customerName(), validated.customerPhone()));
+		CustomerAccount customerAccount = customerUsername == null
+				? null
+				: customerAccountRepository.findByUsernameNormalized(customerUsername)
+						.orElseThrow(() -> new IllegalStateException("Authenticated customer account no longer exists."));
 
 		Integer queuePosition = validated.queueDate() == null
 				? null
 				: allocateQueuePosition(validated.queueDate());
 		Booking booking = bookingRepository.saveAndFlush(new Booking(
 				customer,
+				customerAccount,
 				service,
 				validated.mode(),
 				validated.startsAt(),

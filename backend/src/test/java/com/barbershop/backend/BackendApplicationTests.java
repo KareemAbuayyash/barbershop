@@ -44,17 +44,18 @@ class BackendApplicationTests {
 	@Test
 	void migrationCreatesTheInitialDatabaseFoundation() {
 		assertThat(flyway.info().current()).isNotNull();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("5");
 
 		Integer createdTables = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
 				FROM information_schema.tables
 				WHERE table_schema = current_schema()
 				  AND table_name IN (
-				      'services', 'customers', 'bookings', 'booking_settings', 'management_accounts'
+				        'services', 'customers', 'bookings', 'booking_settings',
+				        'management_accounts', 'customer_accounts'
 				  )
-				""", Integer.class);
-		assertThat(createdTables).isEqualTo(5);
+				  """, Integer.class);
+		assertThat(createdTables).isEqualTo(6);
 
 		Integer defaultSettings = jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM booking_settings WHERE new_bookings_disabled = TRUE",
@@ -85,6 +86,24 @@ class BackendApplicationTests {
 				  )
 				""", Integer.class);
 		assertThat(ownerRoleConstraints).isEqualTo(2);
+
+		Integer customerAccountUsernameConstraint = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM information_schema.table_constraints
+				WHERE table_schema = current_schema()
+				  AND table_name = 'customer_accounts'
+				  AND constraint_name = 'uq_customer_accounts_username'
+				""", Integer.class);
+		assertThat(customerAccountUsernameConstraint).isEqualTo(1);
+
+		Integer customerBookingColumn = jdbcTemplate.queryForObject("""
+				SELECT COUNT(*)
+				FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'bookings'
+				  AND column_name = 'customer_account_id'
+				""", Integer.class);
+		assertThat(customerBookingColumn).isEqualTo(1);
 	}
 
 	@Test

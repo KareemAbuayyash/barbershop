@@ -1,14 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
-import { Menu, Scissors, X } from 'lucide-react'
-import { Link, NavLink } from 'react-router-dom'
+import { LogOut, Menu, Scissors, X } from 'lucide-react'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { navigation, site } from '../../config/site'
 import Button from '../ui/Button'
+import { useAuth } from '../../features/auth/useAuth'
 
 function SiteHeader() {
+  const { user, isLoading, logout } = useAuth()
+  const navigate = useNavigate()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   const closeMenu = () => setIsMenuOpen(false)
+  const handleLogout = async () => {
+    setLogoutError('')
+    try {
+      await logout()
+      closeMenu()
+      navigate('/', { replace: true })
+    } catch {
+      setLogoutError('تعذر إنهاء الجلسة. حاول مرة أخرى.')
+    }
+  }
 
   useEffect(() => {
     if (!isMenuOpen) return
@@ -61,13 +75,31 @@ function SiteHeader() {
               {item.label}
             </NavLink>
           ))}
-          <NavLink className="login-link" to="/login" onClick={closeMenu}>
-            تسجيل الدخول
-          </NavLink>
+          {!isLoading && (user?.authorities.includes('ROLE_OWNER') ? (
+            <>
+              <NavLink className="login-link" to="/owner" onClick={closeMenu}>لوحة المالك</NavLink>
+              <button className="header-logout" type="button" onClick={() => void handleLogout()}>
+                <LogOut size={15} aria-hidden="true" /> تسجيل الخروج
+              </button>
+            </>
+          ) : user?.authorities.includes('ROLE_CUSTOMER') ? (
+            <>
+              <NavLink className="login-link" to="/my-bookings" onClick={closeMenu}>حجوزاتي</NavLink>
+              <button className="header-logout" type="button" onClick={() => void handleLogout()}>
+                <LogOut size={15} aria-hidden="true" /> تسجيل الخروج
+              </button>
+            </>
+          ) : (
+            <>
+              <NavLink className="login-link" to="/login" onClick={closeMenu}>تسجيل الدخول</NavLink>
+              <NavLink className="login-link" to="/register" onClick={closeMenu}>إنشاء حساب</NavLink>
+            </>
+          ))}
           <Button className="header-cta" to="/booking" onClick={closeMenu}>
             احجز موعدك
           </Button>
         </nav>
+        {logoutError && <p className="header-error" role="alert">{logoutError}</p>}
       </div>
     </header>
   )

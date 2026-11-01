@@ -35,6 +35,11 @@ public class ServiceController {
 		return serviceManagementService.findActiveServices();
 	}
 
+	@GetMapping("/manage")
+	public List<ServiceResponse> getAllServicesForManagement() {
+		return serviceManagementService.findAllServices();
+	}
+
 	@GetMapping("/{id}")
 	public ServiceResponse getActiveService(@PathVariable UUID id) {
 		return serviceManagementService.findActiveService(id);

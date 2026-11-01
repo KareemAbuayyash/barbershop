@@ -12,6 +12,7 @@ export interface Service {
 }
 
 export interface BookingMode {
+  value: 'EXACT_APPOINTMENT' | 'CONFIRMATION_REQUEST' | 'DAY_QUEUE' | 'SAME_DAY_QUEUE'
   title: string
   description: string
   icon: 'calendar' | 'barber' | 'queue' | 'today'
@@ -64,21 +65,25 @@ export const services: Service[] = [
 
 export const bookingModes: BookingMode[] = [
   {
+    value: 'EXACT_APPOINTMENT',
     title: 'حجز موعد بوقت محدد',
     description: 'اختر اليوم والوقت المناسبين من المواعيد المتاحة.',
     icon: 'calendar',
   },
   {
+    value: 'CONFIRMATION_REQUEST',
     title: 'الحلاق يختار الموعد',
     description: 'أرسل طلبك، وسيقترح الحلاق وقتاً مناسباً لتأكيده.',
     icon: 'barber',
   },
   {
+    value: 'DAY_QUEUE',
     title: 'حجز دور ليوم محدد',
     description: 'اختر يوماً للانضمام إلى قائمته، ويستطيع الحلاق تنظيم الأدوار يدوياً.',
     icon: 'queue',
   },
   {
+    value: 'SAME_DAY_QUEUE',
     title: 'دور بنفس اليوم',
     description: 'انضم إلى قائمة الانتظار للزيارات المتاحة في اليوم نفسه.',
     icon: 'today',

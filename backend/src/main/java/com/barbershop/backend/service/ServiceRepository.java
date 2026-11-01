@@ -10,5 +10,7 @@ public interface ServiceRepository extends JpaRepository<ServiceEntity, UUID> {
 
 	List<ServiceEntity> findAllByActiveTrueOrderByNameAsc();
 
+	List<ServiceEntity> findAllByOrderByNameAsc();
+
 	Optional<ServiceEntity> findByIdAndActiveTrue(UUID id);
 }

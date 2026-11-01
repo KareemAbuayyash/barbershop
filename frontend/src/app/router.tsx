@@ -3,11 +3,13 @@ import AppLayout from './AppLayout'
 import AboutPage from '../features/about/pages/AboutPage'
 import BookingPage from '../features/booking/pages/BookingPage'
 import ContactPage from '../features/contact/pages/ContactPage'
-import ForgotPasswordPage from '../features/auth/pages/ForgotPasswordPage'
 import LoginPage from '../features/auth/pages/LoginPage'
 import RegisterPage from '../features/auth/pages/RegisterPage'
-import HomePage from '../features/home/pages/HomePage'
+import OwnerPage from '../features/owner/pages/OwnerPage'
+import OwnerRoute from '../features/owner/components/OwnerRoute'
 import MyBookingsPage from '../features/customer/pages/MyBookingsPage'
+import CustomerRoute from '../features/customer/components/CustomerRoute'
+import HomePage from '../features/home/pages/HomePage'
 import NotFoundPage from '../features/home/pages/NotFoundPage'
 import ServicesPage from '../features/services/pages/ServicesPage'
 
@@ -21,8 +23,8 @@ export const router = createBrowserRouter([
       { path: 'booking', element: <BookingPage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'register', element: <RegisterPage /> },
-      { path: 'forgot-password', element: <ForgotPasswordPage /> },
-      { path: 'my-bookings', element: <MyBookingsPage /> },
+      { path: 'owner', element: <OwnerRoute><OwnerPage /></OwnerRoute> },
+      { path: 'my-bookings', element: <CustomerRoute><MyBookingsPage /></CustomerRoute> },
       { path: 'about', element: <AboutPage /> },
       { path: 'contact', element: <ContactPage /> },
       { path: '*', element: <NotFoundPage /> },

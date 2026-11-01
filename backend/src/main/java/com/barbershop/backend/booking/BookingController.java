@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,9 +45,14 @@ public class BookingController {
 	public ResponseEntity<?> createGuestBooking(
 			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
 			@Valid @RequestBody GuestBookingRequest request,
-			HttpServletRequest servletRequest) {
+			HttpServletRequest servletRequest,
+			Authentication authentication) {
+		String customerUsername = authentication != null && authentication.getAuthorities().stream()
+				.anyMatch(authority -> "ROLE_CUSTOMER".equals(authority.getAuthority()))
+						? authentication.getName()
+						: null;
 		BookingCreationResult result = guestBookingService.createBooking(
-				idempotencyKey, request, servletRequest.getRemoteAddr());
+				idempotencyKey, request, servletRequest.getRemoteAddr(), customerUsername);
 		ResponseEntity.BodyBuilder response = ResponseEntity.status(result.status());
 		if (result.location() != null) {
 			response.header(HttpHeaders.LOCATION, result.location());

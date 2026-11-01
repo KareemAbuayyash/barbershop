@@ -27,6 +27,12 @@ public class ServiceManagementService {
 				.toList();
 	}
 
+	public List<ServiceResponse> findAllServices() {
+		return serviceRepository.findAllByOrderByNameAsc().stream()
+				.map(ServiceManagementService::toResponse)
+				.toList();
+	}
+
 	public ServiceResponse findActiveService(UUID id) {
 		return serviceRepository.findByIdAndActiveTrue(id)
 				.map(ServiceManagementService::toResponse)

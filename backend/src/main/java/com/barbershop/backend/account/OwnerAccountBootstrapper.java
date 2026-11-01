@@ -10,14 +10,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.barbershop.backend.customer.CustomerAccountRepository;
+
 @Component
 public class OwnerAccountBootstrapper implements ApplicationRunner {
 
-	private static final long BOOTSTRAP_LOCK_ID = 704_112_903_221L;
 	private static final Pattern USERNAME_PATTERN = Pattern.compile("[a-z0-9._-]{3,64}");
 
 	private final OwnerBootstrapProperties properties;
 	private final ManagementAccountRepository repository;
+	private final CustomerAccountRepository customerAccountRepository;
 	private final JdbcTemplate jdbcTemplate;
 	private final PasswordEncoder passwordEncoder;
 	private final TransactionTemplate transactionTemplate;
@@ -25,11 +27,13 @@ public class OwnerAccountBootstrapper implements ApplicationRunner {
 	public OwnerAccountBootstrapper(
 			OwnerBootstrapProperties properties,
 			ManagementAccountRepository repository,
+			CustomerAccountRepository customerAccountRepository,
 			JdbcTemplate jdbcTemplate,
 			PasswordEncoder passwordEncoder,
 			TransactionTemplate transactionTemplate) {
 		this.properties = properties;
 		this.repository = repository;
+		this.customerAccountRepository = customerAccountRepository;
 		this.jdbcTemplate = jdbcTemplate;
 		this.passwordEncoder = passwordEncoder;
 		this.transactionTemplate = transactionTemplate;
@@ -49,7 +53,7 @@ public class OwnerAccountBootstrapper implements ApplicationRunner {
 		}
 
 		transactionTemplate.executeWithoutResult(status -> {
-			jdbcTemplate.execute("SELECT pg_advisory_xact_lock(" + BOOTSTRAP_LOCK_ID + ")");
+			AccountWriteLock.acquire(jdbcTemplate);
 			if (repository.existsByRole(ManagementAccount.OWNER_ROLE)) {
 				return;
 			}
@@ -61,6 +65,10 @@ public class OwnerAccountBootstrapper implements ApplicationRunner {
 			String username = UsernameNormalizer.normalize(properties.getUsername());
 			String password = properties.getPassword();
 			validateCredentials(username, password);
+			if (customerAccountRepository.existsByUsernameNormalized(username)) {
+				throw new IllegalStateException(
+						"BARBER_ADMIN_USERNAME is already used by a customer account. Configure a different owner username.");
+			}
 			repository.saveAndFlush(new ManagementAccount(username, passwordEncoder.encode(password)));
 		});
 	}

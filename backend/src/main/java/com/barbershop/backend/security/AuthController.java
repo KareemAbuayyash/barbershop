@@ -25,6 +25,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.barbershop.backend.account.UsernameNormalizer;
+import com.barbershop.backend.customer.CustomerAccountRegistrationService;
+import com.barbershop.backend.customer.dto.CustomerRegistrationRequest;
+import com.barbershop.backend.customer.dto.CustomerRegistrationResponse;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -34,16 +37,28 @@ public class AuthController {
 	private final SecurityContextRepository securityContextRepository;
 	private final SessionAuthenticationStrategy loginSessionAuthenticationStrategy;
 	private final RateLimitService rateLimitService;
+	private final CustomerAccountRegistrationService customerAccountRegistrationService;
 
 	public AuthController(
 			AuthenticationManager authenticationManager,
 			SecurityContextRepository securityContextRepository,
 			SessionAuthenticationStrategy loginSessionAuthenticationStrategy,
-			RateLimitService rateLimitService) {
+			RateLimitService rateLimitService,
+			CustomerAccountRegistrationService customerAccountRegistrationService) {
 		this.authenticationManager = authenticationManager;
 		this.securityContextRepository = securityContextRepository;
 		this.loginSessionAuthenticationStrategy = loginSessionAuthenticationStrategy;
 		this.rateLimitService = rateLimitService;
+		this.customerAccountRegistrationService = customerAccountRegistrationService;
+	}
+
+	@PostMapping("/register")
+	public ResponseEntity<CustomerRegistrationResponse> register(
+			@Valid @RequestBody CustomerRegistrationRequest request,
+			HttpServletRequest servletRequest) {
+		rateLimitService.consumeRegistrationAttempt(servletRequest.getRemoteAddr());
+		CustomerRegistrationResponse response = customerAccountRegistrationService.register(request);
+		return ResponseEntity.status(HttpStatus.CREATED).body(response);
 	}
 
 	@PostMapping("/login")
