@@ -110,6 +110,17 @@ class OwnerAccountBootstrapIntegrationTests {
 	}
 
 	@Test
+	void acceptsAnEightByteOwnerPassword() {
+		properties.setUsername("owner");
+		properties.setPassword("eight888");
+
+		runBootstrap();
+
+		ManagementAccount account = inSchemaValue(() -> repository.findByUsernameNormalized("owner").orElseThrow());
+		assertThat(passwordEncoder.matches("eight888", account.getPasswordHash())).isTrue();
+	}
+
+	@Test
 	void startupNeverResetsAnExistingOwnersPassword() {
 		properties.setUsername("Owner");
 		properties.setPassword("first-test-password");

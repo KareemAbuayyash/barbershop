@@ -1088,9 +1088,17 @@ button {
 }
 
 .form-options a,
-.auth-switch a {
+.auth-switch a,
+.auth-switch .text-button {
   color: var(--color-gold-light);
   font-size: 12px;
+}
+
+.auth-switch .text-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .form-submit {

@@ -14,7 +14,6 @@ function SiteFooter() {
           {navigation.map((item) => (
             <Link to={item.href} key={item.href}>{item.label}</Link>
           ))}
-          <Link to="/register">إنشاء حساب</Link>
           <Link to="/my-bookings">حجوزاتي</Link>
           <Link to="/login">تسجيل الدخول</Link>
         </nav>

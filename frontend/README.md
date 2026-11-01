@@ -7,7 +7,7 @@
 3. From this directory, run `npm install` once and `npm run dev`. The Vite development server proxies `/api` to `http://localhost:8080`.
 4. If the backend listens elsewhere, set `VITE_API_PROXY_TARGET` in the environment used to start Vite.
 
-The browser uses same-origin `/api` requests, session cookies, and CSRF tokens kept only in memory. Customers can register at `/register` and sign in at `/login`; customer sessions cannot access management endpoints. The owner account remains private and is bootstrapped only from backend environment configuration.
+The browser uses same-origin `/api` requests, session cookies, and CSRF tokens kept only in memory. Customers can sign in or open the registration form from `/login`; customer sessions cannot access management endpoints. The owner account remains private and is bootstrapped only from backend environment configuration.
 
 ## Production
 

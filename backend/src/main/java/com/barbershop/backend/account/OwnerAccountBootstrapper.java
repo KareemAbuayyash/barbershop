@@ -79,9 +79,9 @@ public class OwnerAccountBootstrapper implements ApplicationRunner {
 					"BARBER_ADMIN_USERNAME must normalize to 3-64 lowercase letters, digits, dots, underscores, or hyphens.");
 		}
 		int passwordBytes = password.getBytes(StandardCharsets.UTF_8).length;
-		if (passwordBytes < 12 || passwordBytes > 72) {
+		if (passwordBytes < 8 || passwordBytes > 72) {
 			throw new IllegalStateException(
-					"BARBER_ADMIN_PASSWORD must contain 12-72 UTF-8 bytes for BCrypt.");
+					"BARBER_ADMIN_PASSWORD must contain 8-72 UTF-8 bytes for BCrypt.");
 		}
 	}
 }

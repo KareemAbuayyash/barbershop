@@ -49,10 +49,10 @@ public class CustomerAccountRegistrationService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Display name must contain at least 2 characters.");
 		}
 		int passwordBytes = request.password().getBytes(StandardCharsets.UTF_8).length;
-		if (passwordBytes < 12 || passwordBytes > 72) {
+		if (passwordBytes < 8 || passwordBytes > 72) {
 			throw new ResponseStatusException(
 					HttpStatus.BAD_REQUEST,
-					"Password must contain 12-72 UTF-8 bytes.");
+					"Password must contain 8-72 UTF-8 bytes.");
 		}
 		if (managementAccountRepository.findByUsernameNormalized(username).isPresent()
 				|| customerAccountRepository.existsByUsernameNormalized(username)) {

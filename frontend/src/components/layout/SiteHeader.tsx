@@ -90,10 +90,7 @@ function SiteHeader() {
               </button>
             </>
           ) : (
-            <>
-              <NavLink className="login-link" to="/login" onClick={closeMenu}>تسجيل الدخول</NavLink>
-              <NavLink className="login-link" to="/register" onClick={closeMenu}>إنشاء حساب</NavLink>
-            </>
+            <NavLink className="login-link" to="/login" onClick={closeMenu}>تسجيل الدخول</NavLink>
           ))}
           <Button className="header-cta" to="/booking" onClick={closeMenu}>
             احجز موعدك

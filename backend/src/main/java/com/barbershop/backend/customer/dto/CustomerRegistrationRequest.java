@@ -20,6 +20,6 @@ public record CustomerRegistrationRequest(
 		String phoneNumber,
 
 		@NotBlank
-		@Size(max = 72)
+		@Size(min = 8, max = 72)
 		String password) {
 }

@@ -138,6 +138,24 @@ class CustomerAccountApiIntegrationTests {
 	}
 
 	@Test
+	void registrationAcceptsAnEightCharacterPassword() throws Exception {
+		String body = registrationBody().replace(PASSWORD, "eight888");
+
+		mockMvc.perform(post("/api/auth/register")
+						.with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(body))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/api/auth/login")
+						.with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"username\":\"" + username + "\",\"password\":\"eight888\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.authorities[0]").value("ROLE_CUSTOMER"));
+	}
+
+	@Test
 	void registrationIsRateLimitedByRemoteAddress() throws Exception {
 		String remoteAddress = "198.51.100." + (10 + Math.abs(username.hashCode() % 200));
 		for (int attempt = 0; attempt < 5; attempt++) {
