@@ -6,7 +6,10 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,16 +18,22 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.barbershop.backend.admin.AdminDtos.CustomerDetails;
 import com.barbershop.backend.admin.AdminDtos.CustomerPasswordRequest;
 import com.barbershop.backend.admin.AdminDtos.CustomerSummary;
 import com.barbershop.backend.admin.AdminDtos.CustomerUpdateRequest;
 import com.barbershop.backend.admin.AdminDtos.BookingEmployeeRequest;
+import com.barbershop.backend.admin.AdminDtos.CheckoutRequest;
 import com.barbershop.backend.admin.AdminDtos.DashboardResponse;
 import com.barbershop.backend.admin.AdminDtos.AdminSettingsRequest;
+import com.barbershop.backend.admin.AdminDtos.BestSellingProduct;
+import com.barbershop.backend.admin.AdminDtos.BestSellingService;
+import com.barbershop.backend.admin.AdminDtos.BookingSalesReport;
 import com.barbershop.backend.admin.AdminDtos.Employee;
 import com.barbershop.backend.admin.AdminDtos.EmployeePayment;
 import com.barbershop.backend.admin.AdminDtos.EmployeePaymentResponse;
@@ -39,6 +48,7 @@ import com.barbershop.backend.admin.AdminDtos.PageResponse;
 import com.barbershop.backend.admin.AdminDtos.Payment;
 import com.barbershop.backend.admin.AdminDtos.PaymentRequest;
 import com.barbershop.backend.admin.AdminDtos.Product;
+import com.barbershop.backend.admin.AdminDtos.ProductImage;
 import com.barbershop.backend.admin.AdminDtos.ProductRequest;
 import com.barbershop.backend.admin.AdminDtos.ProductUpdateRequest;
 import com.barbershop.backend.admin.AdminDtos.ReportResponse;
@@ -108,6 +118,15 @@ public class AdminManagementController {
 		return service.recordPayment(bookingId, request);
 	}
 
+	@PostMapping("/bookings/{bookingId}/checkout")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void checkoutBooking(
+			@PathVariable UUID bookingId,
+			@Valid @RequestBody CheckoutRequest request,
+			Authentication authentication) {
+		service.checkoutBooking(bookingId, request, authentication.getName());
+	}
+
 	@GetMapping("/debts")
 	public List<AdminManagementService.DebtResponse> debts(@RequestParam(required = false) String q) {
 		return service.debts(q);
@@ -151,6 +170,27 @@ public class AdminManagementController {
 		return service.report(fromDate, toDate);
 	}
 
+	@GetMapping("/reports/products")
+	public List<BestSellingProduct> bestSellingProducts(
+			@RequestParam(required = false) LocalDate fromDate,
+			@RequestParam(required = false) LocalDate toDate) {
+		return service.bestSellingProducts(fromDate, toDate);
+	}
+
+	@GetMapping("/reports/services")
+	public List<BestSellingService> bestSellingServices(
+			@RequestParam(required = false) LocalDate fromDate,
+			@RequestParam(required = false) LocalDate toDate) {
+		return service.bestSellingServices(fromDate, toDate);
+	}
+
+	@GetMapping("/reports/bookings")
+	public List<BookingSalesReport> bookingSales(
+			@RequestParam(required = false) LocalDate fromDate,
+			@RequestParam(required = false) LocalDate toDate) {
+		return service.bookingSales(fromDate, toDate);
+	}
+
 	@GetMapping("/inventory/products")
 	public List<Product> products() {
 		return service.products();
@@ -164,6 +204,15 @@ public class AdminManagementController {
 		return service.createProduct(request, authentication.getName());
 	}
 
+	@PostMapping(value = "/inventory/products", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	@ResponseStatus(HttpStatus.CREATED)
+	public Product createProductWithImage(
+			@Valid @RequestPart("product") ProductRequest request,
+			@RequestPart(value = "image", required = false) MultipartFile image,
+			Authentication authentication) {
+		return service.createProduct(request, authentication.getName(), image);
+	}
+
 	@PostMapping("/inventory/products/{id}/movements")
 	public Product recordInventoryMovement(
 			@PathVariable UUID id,
@@ -175,6 +224,24 @@ public class AdminManagementController {
 	@PutMapping("/inventory/products/{id}")
 	public Product updateProduct(@PathVariable UUID id, @Valid @RequestBody ProductUpdateRequest request) {
 		return service.updateProduct(id, request);
+	}
+
+	@PutMapping(value = "/inventory/products/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public Product updateProductWithImage(
+			@PathVariable UUID id,
+			@Valid @RequestPart("product") ProductUpdateRequest request,
+			@RequestPart(value = "image", required = false) MultipartFile image) {
+		return service.updateProduct(id, request, image);
+	}
+
+	@GetMapping(value = "/inventory/products/{id}/image")
+	public ResponseEntity<byte[]> productImage(@PathVariable UUID id) {
+		ProductImage image = service.productImage(id);
+		return ResponseEntity.ok()
+				.contentType(MediaType.parseMediaType(image.contentType()))
+				.cacheControl(CacheControl.noStore())
+				.header("X-Content-Type-Options", "nosniff")
+				.body(image.data());
 	}
 
 	@GetMapping("/inventory/products/{id}/movements")

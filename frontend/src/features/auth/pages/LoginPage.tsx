@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import AuthCard from '../components/AuthCard'
 import { useAuth } from '../useAuth'
 import { apiRequest, getErrorMessage } from '../../../lib/api'
@@ -7,9 +7,17 @@ import { apiRequest, getErrorMessage } from '../../../lib/api'
 function LoginPage() {
   const { user, isLoading, login } = useAuth()
   const navigate = useNavigate()
-  const [message, setMessage] = useState('')
+  const [searchParams] = useSearchParams()
+  const [message, setMessage] = useState(() =>
+    searchParams.get('sessionExpired') === '1' ? 'انتهت الجلسة، يرجى تسجيل الدخول مجدداً.' : '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('sessionExpired') === '1') {
+      setMessage('انتهت الجلسة، يرجى تسجيل الدخول مجدداً.')
+    }
+  }, [searchParams])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -21,6 +29,7 @@ function LoginPage() {
       const authenticatedUser = await login(
         String(formData.get('username')),
         String(formData.get('password')),
+        formData.get('rememberMe') === 'on',
       )
       navigate(
         authenticatedUser.authorities.includes('ROLE_OWNER')
@@ -190,6 +199,10 @@ function LoginPage() {
                 autoComplete="current-password"
                 required
               />
+              <label className="remember-me-option">
+                <input name="rememberMe" type="checkbox" />
+                تذكرني لمدة 30 يوماً على هذا الجهاز
+              </label>
               <button className="button button--primary form-submit" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول'}
               </button>

@@ -1,6 +1,7 @@
 package com.barbershop.backend.security;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,7 +9,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -32,6 +35,9 @@ import com.barbershop.backend.customer.dto.CustomerRegistrationResponse;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+	private static final int REMEMBERED_SESSION_TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
+	private static final Duration REMEMBERED_COOKIE_AGE = Duration.ofDays(30);
 
 	private final AuthenticationManager authenticationManager;
 	private final SecurityContextRepository securityContextRepository;
@@ -90,6 +96,28 @@ public class AuthController {
 		context.setAuthentication(authentication);
 		SecurityContextHolder.setContext(context);
 		securityContextRepository.saveContext(context, servletRequest, servletResponse);
+		var session = servletRequest.getSession(false);
+		if (session == null) {
+			throw new IllegalStateException("Authenticated login did not create an HTTP session.");
+		}
+		if (request.rememberMe()) {
+			session.setMaxInactiveInterval(REMEMBERED_SESSION_TIMEOUT_SECONDS);
+			var cookieConfig = servletRequest.getServletContext().getSessionCookieConfig();
+			String cookieName = cookieConfig.getName() == null || cookieConfig.getName().isBlank()
+					? "JSESSIONID"
+					: cookieConfig.getName();
+			String cookiePath = cookieConfig.getPath() == null || cookieConfig.getPath().isBlank()
+					? "/"
+					: cookieConfig.getPath();
+			ResponseCookie rememberedCookie = ResponseCookie.from(cookieName, session.getId())
+					.httpOnly(cookieConfig.isHttpOnly())
+					.secure(cookieConfig.isSecure())
+					.path(cookiePath)
+					.sameSite("Lax")
+					.maxAge(REMEMBERED_COOKIE_AGE)
+					.build();
+			servletResponse.setHeader(HttpHeaders.SET_COOKIE, rememberedCookie.toString());
+		}
 		rateLimitService.clearLoginFailures(remoteAddress);
 		return ResponseEntity.ok(currentUserResponse(authentication));
 	}

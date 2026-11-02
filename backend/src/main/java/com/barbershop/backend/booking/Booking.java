@@ -54,6 +54,9 @@ public class Booking {
 	@Column(name = "starts_at")
 	private Instant startsAt;
 
+	@Column(name = "preferred_date")
+	private LocalDate preferredDate;
+
 	@Column(name = "queue_date")
 	private LocalDate queueDate;
 
@@ -121,6 +124,20 @@ public class Booking {
 		this.customerAccount = customerAccount;
 	}
 
+	public Booking(
+			CustomerEntity customer,
+			CustomerAccount customerAccount,
+			ServiceEntity service,
+			BookingMode bookingMode,
+			Instant startsAt,
+			LocalDate preferredDate,
+			LocalDate queueDate,
+			Integer queuePosition,
+			String notes) {
+		this(customer, customerAccount, service, bookingMode, startsAt, queueDate, queuePosition, notes);
+		this.preferredDate = preferredDate;
+	}
+
 	@PrePersist
 	private void setCreationTimestamps() {
 		Instant now = Instant.now();
@@ -165,6 +182,10 @@ public class Booking {
 		return queueDate;
 	}
 
+	public LocalDate getPreferredDate() {
+		return preferredDate;
+	}
+
 	public Integer getQueuePosition() {
 		return queuePosition;
 	}
@@ -203,6 +224,10 @@ public class Booking {
 
 	public void setStartsAt(Instant startsAt) {
 		this.startsAt = startsAt;
+	}
+
+	public void setPreferredDate(LocalDate preferredDate) {
+		this.preferredDate = preferredDate;
 	}
 
 	public void setQueueDate(LocalDate queueDate) {

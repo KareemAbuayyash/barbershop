@@ -1,10 +1,19 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import SiteFooter from '../components/layout/SiteFooter'
 import SiteHeader from '../components/layout/SiteHeader'
 
 function AppLayout() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const handleExpiredSession = () => navigate('/login?sessionExpired=1', { replace: true })
+    window.addEventListener('barbershop:session-expired', handleExpiredSession)
+    return () => window.removeEventListener('barbershop:session-expired', handleExpiredSession)
+  }, [navigate])
+
   if (pathname.startsWith('/owner')) {
     return (
       <>

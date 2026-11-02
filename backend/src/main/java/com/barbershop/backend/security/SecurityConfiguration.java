@@ -1,6 +1,7 @@
 package com.barbershop.backend.security;
 
 import java.util.List;
+import java.time.Duration;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -9,7 +10,9 @@ import com.barbershop.backend.account.OwnerBootstrapProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -73,6 +76,7 @@ public class SecurityConfiguration {
 						.requestMatchers(HttpMethod.GET, "/api/shop-profile").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/bookings/availability").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/push/configuration").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/bookings").permitAll()
 						.requestMatchers(HttpMethod.POST,
 								"/api/auth/login",
@@ -81,11 +85,11 @@ public class SecurityConfiguration {
 						.requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/customer/bookings", "/api/customer/profile").hasRole("CUSTOMER")
 						.requestMatchers("/api/admin/**").hasRole("OWNER")
+						.requestMatchers(HttpMethod.GET, "/api/bookings/availability/*").hasRole("OWNER")
 						.requestMatchers(HttpMethod.GET, "/api/bookings", "/api/bookings/*").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PATCH,
 								"/api/bookings/*/confirm",
 								"/api/bookings/*/cancel",
-								"/api/bookings/*/complete",
 								"/api/bookings/queue/reorder").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PUT, "/api/bookings/*/schedule").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PATCH, "/api/services/archive").hasRole("OWNER")
@@ -109,8 +113,24 @@ public class SecurityConfiguration {
 						.logoutUrl("/api/auth/logout")
 						.invalidateHttpSession(true)
 						.clearAuthentication(true)
-						.logoutSuccessHandler((request, response, authentication) ->
-								response.setStatus(HttpServletResponse.SC_NO_CONTENT)))
+						.logoutSuccessHandler((request, response, authentication) -> {
+							var cookieConfig = request.getServletContext().getSessionCookieConfig();
+							String cookieName = cookieConfig.getName() == null || cookieConfig.getName().isBlank()
+									? "JSESSIONID"
+									: cookieConfig.getName();
+							String cookiePath = cookieConfig.getPath() == null || cookieConfig.getPath().isBlank()
+									? "/"
+									: cookieConfig.getPath();
+							ResponseCookie expiredCookie = ResponseCookie.from(cookieName, "")
+									.httpOnly(cookieConfig.isHttpOnly())
+									.secure(cookieConfig.isSecure())
+									.path(cookiePath)
+									.sameSite("Lax")
+									.maxAge(Duration.ZERO)
+									.build();
+							response.setHeader(HttpHeaders.SET_COOKIE, expiredCookie.toString());
+							response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+						}))
 				.formLogin(form -> form.disable());
 
 		return http.build();

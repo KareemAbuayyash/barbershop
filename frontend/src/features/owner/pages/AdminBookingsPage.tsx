@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Pencil, Search, X } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { apiRequest, getErrorMessage, type BookingMode, type BookingStatus } from '../../../lib/api'
 import { formatShopDateTime, getShopDate, isoToShopLocalDateTime } from '../../../lib/shop-time'
-import type { AdminEmployee, AdminPage, AdminBooking } from '../admin-api'
+import type { AdminEmployee, AdminPage, AdminBooking, AdminProduct } from '../admin-api'
 
 type Preset = 'today' | 'tomorrow' | 'week' | 'month' | 'all' | 'custom'
 
@@ -44,6 +45,13 @@ interface BookingAvailability {
   slots: Array<{ startsAt: string; localTime: string }>
 }
 
+interface CheckoutLine {
+  key: number
+  productId: string
+  quantity: string
+  unitPrice: string
+}
+
 function localDate(date: Date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -72,6 +80,14 @@ function getPresetRange(preset: Preset, today: string): [string, string] | null 
   return [start, localDate(current)]
 }
 
+function checkoutTotal(servicePrice: number, lines: CheckoutLine[]) {
+  const retailTotal = lines.reduce((sum, line) => {
+    const lineTotal = (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0)
+    return sum + Math.round((lineTotal + Number.EPSILON) * 100) / 100
+  }, 0)
+  return Math.round((servicePrice + retailTotal + Number.EPSILON) * 100) / 100
+}
+
 function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   const [searchParams] = useSearchParams()
   const [preset, setPreset] = useState<Preset>('all')
@@ -88,9 +104,16 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [products, setProducts] = useState<AdminProduct[]>([])
+  const [productsLoaded, setProductsLoaded] = useState(false)
   const [busyBookingId, setBusyBookingId] = useState('')
   const [editingBookingId, setEditingBookingId] = useState('')
   const [confirmingBookingId, setConfirmingBookingId] = useState('')
+  const [completingBookingId, setCompletingBookingId] = useState('')
+  const [checkoutLines, setCheckoutLines] = useState<CheckoutLine[]>([])
+  const [checkoutAmount, setCheckoutAmount] = useState('')
+  const [checkoutMethod, setCheckoutMethod] = useState('CASH')
+  const [checkoutNotes, setCheckoutNotes] = useState('')
   const [appointmentDate, setAppointmentDate] = useState(getShopDate)
   const [appointmentSlots, setAppointmentSlots] = useState<BookingAvailability | null>(null)
   const [loadingAppointmentSlots, setLoadingAppointmentSlots] = useState(false)
@@ -103,6 +126,13 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     void apiRequest<AdminEmployee[]>('/api/admin/employees')
       .then(setEmployees)
       .catch((cause: unknown) => setError(getErrorMessage(cause, 'تعذر تحميل قائمة الموظفين.')))
+  }, [])
+
+  useEffect(() => {
+    void apiRequest<AdminProduct[]>('/api/admin/inventory/products')
+      .then(setProducts)
+      .catch((cause: unknown) => setError(getErrorMessage(cause, 'تعذر تحميل منتجات المخزون.')))
+      .finally(() => setProductsLoaded(true))
   }, [])
 
   useEffect(() => {
@@ -137,7 +167,13 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
       serviceId: booking.serviceId,
     })
     void apiRequest<BookingAvailability>(`/api/bookings/availability/${booking.id}?${params}`)
-      .then((data) => { if (active) setAppointmentSlots(data) })
+      .then((data) => {
+        if (active) {
+          setAppointmentSlots(data)
+          setSelectedAppointmentSlot((current) =>
+            data.slots.some((slot) => slot.startsAt === current) ? current : '')
+        }
+      })
       .catch((cause: unknown) => {
         if (active) setError(getErrorMessage(cause, 'تعذر تحميل المواعيد المتاحة.'))
       })
@@ -145,11 +181,17 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     return () => { active = false }
   }, [appointmentDate, confirmingBookingId, editingBookingId, refreshKey, result])
 
-  const runBookingAction = async (booking: AdminBooking, action: 'confirm' | 'cancel' | 'complete') => {
-    if (action === 'confirm'
-      && booking.bookingMode === 'CONFIRMATION_REQUEST'
-      && !booking.startsAt) {
+  const runBookingAction = async (booking: AdminBooking, action: 'confirm' | 'cancel') => {
+    if (action === 'confirm' && booking.bookingMode === 'CONFIRMATION_REQUEST') {
+      setError('')
+      setNotice('')
+      setAppointmentDate(booking.preferredDate
+        ?? (booking.startsAt ? isoToShopLocalDateTime(booking.startsAt).slice(0, 10) : getShopDate()))
+      setSelectedAppointmentSlot(booking.startsAt ?? '')
+      setAppointmentSlots(null)
+      setLoadingAppointmentSlots(true)
       setConfirmingBookingId(booking.id)
+      setEditingBookingId('')
       return
     }
 
@@ -158,12 +200,44 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     setNotice('')
     try {
       await apiRequest(`/api/bookings/${booking.id}/${action}`, { method: 'PATCH' })
-      setNotice(action === 'confirm' ? 'تم تأكيد الحجز.' : action === 'cancel' ? 'تم إلغاء الحجز.' : 'تم إكمال الحجز.')
+      setNotice(action === 'confirm' ? 'تم تأكيد الحجز.' : 'تم إلغاء الحجز.')
       setLoading(true)
       setRefreshKey((value) => value + 1)
     } catch (cause) {
       setError(getErrorMessage(cause, 'تعذر تحديث حالة الحجز.'))
     } finally { setBusyBookingId('') }
+  }
+
+  const checkoutBooking = async (event: FormEvent<HTMLFormElement>, booking: AdminBooking) => {
+    event.preventDefault()
+    setBusyBookingId(booking.id)
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/api/admin/bookings/${booking.id}/checkout`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: Number(checkoutAmount || checkoutTotal(booking.servicePrice, checkoutLines)),
+          method: checkoutMethod,
+          notes: checkoutNotes.trim() || null,
+          products: checkoutLines.filter((line) => line.productId).map((line) => ({
+            productId: line.productId,
+            quantity: Number(line.quantity),
+            unitPrice: Number(line.unitPrice),
+          })),
+        }),
+      })
+      setCompletingBookingId('')
+      setCheckoutLines([])
+      setCheckoutNotes('')
+      setNotice('تم إنهاء الحجز وتسجيل التحصيل والمنتجات المباعة.')
+      setLoading(true)
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر إنهاء الحجز وتسجيل التحصيل.'))
+    } finally {
+      setBusyBookingId('')
+    }
   }
 
   const confirmWithTime = async (event: FormEvent<HTMLFormElement>, booking: AdminBooking) => {
@@ -223,6 +297,7 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
         method: 'PUT',
         body: JSON.stringify({
           startsAt: startInput || null,
+          preferredDate: booking.bookingMode === 'CONFIRMATION_REQUEST' ? appointmentDate : null,
           queueDate: String(data.get('queueDate') ?? '') || null,
           notes: String(data.get('notes') ?? '').trim() || null,
         }),
@@ -353,39 +428,52 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
               <div className="admin-table-head">
                 <span>العميل</span><span>الخدمة</span><span>التاريخ</span><span>الحالة</span><span>القيمة</span><span>الإجراءات</span>
               </div>
-              {result.content.map((booking) => (
-                <div className="admin-booking-entry" key={booking.id}>
+                {result.content.map((booking, index) => (
+                <Fragment key={booking.id}>
+                  {(index === 0 || result.content[index - 1]?.status !== booking.status) && (
+                    <h3 className="admin-booking-group-heading">{statusNames[booking.status]}</h3>
+                  )}
+                  <div className="admin-booking-entry">
                 <article className="admin-booking-row">
-                  <div><strong>{booking.customerName || 'عميل'}</strong>
+                  <div data-label="العميل"><strong>{booking.customerName || 'عميل'}</strong>
                     <small dir="ltr">{booking.customerPhone || '—'}</small></div>
-                  <div><strong>{booking.serviceName}</strong><small>{modes[booking.bookingMode]}</small></div>
-                  <div><strong>{booking.queueDate
+                  <div data-label="الخدمة"><strong>{booking.serviceName}</strong><small>{modes[booking.bookingMode]}</small></div>
+                  <div data-label="التاريخ"><strong>{booking.queueDate
                     ? new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeZone: 'Asia/Hebron' })
                       .format(new Date(`${booking.queueDate}T12:00:00+02:00`))
-                    : formatShopDateTime(booking.startsAt)}</strong>
+                  : booking.startsAt
+                    ? formatShopDateTime(booking.startsAt)
+                    : booking.preferredDate
+                      ? new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeZone: 'Asia/Hebron' })
+                        .format(new Date(`${booking.preferredDate}T12:00:00+02:00`))
+                      : 'لم يُحدد بعد'}</strong>
+                  {booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
+                    && (booking.preferredDate || booking.startsAt)
+                    && <small>{booking.startsAt ? 'الوقت الذي فضّله العميل' : 'التاريخ الذي فضّله العميل'}</small>}
                     {booking.queuePosition && <small>الدور {booking.queuePosition}</small>}</div>
-                  <span className={`booking-status booking-status--${booking.status.toLowerCase()}`}>
+                  <span data-label="الحالة" className={`booking-status booking-status--${booking.status.toLowerCase()}`}>
                     {statusNames[booking.status]}</span>
-                  <strong className="admin-booking-price">{booking.servicePrice.toLocaleString('ar')} ₪</strong>
-                  <div className="admin-booking-actions">
+                  <strong data-label="القيمة" className="admin-booking-price">{booking.servicePrice.toLocaleString('ar')} ₪</strong>
+                  <div data-label="الإجراءات" className="admin-booking-actions">
                     {booking.status === 'PENDING' && <button type="button" className="admin-icon-button"
-                      aria-label={booking.bookingMode === 'CONFIRMATION_REQUEST' && !booking.startsAt
+                      aria-label={booking.bookingMode === 'CONFIRMATION_REQUEST'
                         ? 'تحديد موعد وتأكيد الحجز' : 'تأكيد الحجز'}
-                      title={booking.bookingMode === 'CONFIRMATION_REQUEST' && !booking.startsAt
+                      title={booking.bookingMode === 'CONFIRMATION_REQUEST'
                         ? 'تحديد موعد وتأكيد الحجز' : 'تأكيد الحجز'}
                       disabled={busyBookingId === booking.id}
-                      onClick={() => {
-                        if (booking.bookingMode === 'CONFIRMATION_REQUEST' && !booking.startsAt) {
-                          setAppointmentDate(getShopDate())
-                          setSelectedAppointmentSlot('')
-                          setAppointmentSlots(null)
-                          setLoadingAppointmentSlots(true)
-                        }
-                        void runBookingAction(booking, 'confirm')
-                      }}><Check size={16} /></button>}
+                      onClick={() => void runBookingAction(booking, 'confirm')}><Check size={16} /></button>}
                     {booking.status === 'CONFIRMED' && <button type="button" className="admin-icon-button"
-                      aria-label="إكمال الحجز" title="إكمال الحجز" disabled={busyBookingId === booking.id}
-                      onClick={() => void runBookingAction(booking, 'complete')}><Check size={16} /></button>}
+                      aria-label="إنهاء الحجز وتسجيل الدفع" title="إنهاء الحجز وتسجيل الدفع"
+                      disabled={busyBookingId === booking.id}
+                      onClick={() => {
+                        setCompletingBookingId(booking.id)
+                        setCheckoutLines([])
+                        setCheckoutAmount('')
+                        setCheckoutMethod('CASH')
+                        setCheckoutNotes('')
+                        setError('')
+                        setNotice('')
+                      }}><Check size={16} /></button>}
                     {(booking.status === 'PENDING' || booking.status === 'CONFIRMED') && <button type="button"
                       className="admin-icon-button admin-icon-button--danger" aria-label="إلغاء الحجز"
                       title="إلغاء الحجز" disabled={busyBookingId === booking.id}
@@ -421,9 +509,11 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                             }
                             setAppointmentDate(booking.startsAt
                               ? isoToShopLocalDateTime(booking.startsAt).slice(0, 10)
-                              : getShopDate())
+                              : booking.preferredDate ?? getShopDate())
                             setSelectedAppointmentSlot(booking.startsAt ?? '')
                             setAppointmentSlots(null)
+                            setError('')
+                            setNotice('')
                             setLoadingAppointmentSlots(
                               booking.bookingMode === 'EXACT_APPOINTMENT'
                                 || booking.bookingMode === 'CONFIRMATION_REQUEST'
@@ -437,12 +527,26 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                       )}
                   </div>
                 </article>
-                {editingBookingId === booking.id && (
+                </div>
+                {editingBookingId === booking.id && createPortal(
+                  <div className="admin-booking-modal-backdrop" role="presentation"
+                    onMouseDown={(event) => {
+                      if (event.target === event.currentTarget) setEditingBookingId('')
+                    }}>
+                    <section className="admin-booking-modal" role="dialog" aria-modal="true"
+                      aria-labelledby="booking-edit-title" dir="rtl">
+                    <div className="admin-booking-modal-heading">
+                      <div><span className="admin-eyebrow">إدارة الحجز</span>
+                        <h2 id="booking-edit-title">تعديل تفاصيل الموعد</h2></div>
+                      <button type="button" className="admin-icon-button" aria-label="إغلاق"
+                        onClick={() => setEditingBookingId('')}><X size={17} /></button>
+                    </div>
                   <form className="admin-booking-edit" onSubmit={(event) => void saveSchedule(event, booking)}>
                     {(booking.bookingMode === 'EXACT_APPOINTMENT' || booking.bookingMode === 'CONFIRMATION_REQUEST'
                       || booking.bookingMode === 'LEGACY') && (
                         <>
-                          <label>تاريخ الموعد
+                          <label>{booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
+                            ? 'التاريخ المفضّل' : 'تاريخ الموعد'}
                             <input type="date" min={getShopDate()} value={appointmentDate}
                               onChange={(event) => {
                                 setAppointmentDate(event.target.value)
@@ -452,11 +556,13 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                               }}
                               onClick={(event) => event.currentTarget.showPicker?.()} required />
                           </label>
-                          <label>{booking.bookingMode === 'CONFIRMATION_REQUEST' ? 'الوقت المقترح' : 'الموعد'}
+                          <label>{booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
+                            ? 'الوقت المفضّل (اختياري)' : 'الموعد'}
                             <select name="startsAt" value={selectedAppointmentSlot}
                               onChange={(event) => setSelectedAppointmentSlot(event.target.value)}
-                              required={booking.bookingMode !== 'CONFIRMATION_REQUEST'}>
-                              {booking.bookingMode === 'CONFIRMATION_REQUEST' && <option value="">بدون وقت مقترح</option>}
+                              required={booking.bookingMode !== 'CONFIRMATION_REQUEST' || booking.status === 'CONFIRMED'}>
+                              {booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
+                                && <option value="">بدون وقت مقترح</option>}
                               {appointmentSlots?.slots.map((slot) => (
                                 <option key={slot.startsAt} value={slot.startsAt}>{slot.localTime}</option>
                               ))}
@@ -464,7 +570,7 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                           </label>
                           {loadingAppointmentSlots && <p className="admin-form-note">جارٍ تحميل الأوقات المتاحة...</p>}
                           {!loadingAppointmentSlots && appointmentSlots && !appointmentSlots.open
-                            && <p className="admin-form-note">المحل مغلق في هذا اليوم.</p>}
+                            && <p className="admin-form-note">المحل مغلق في هذا التاريخ؛ اختر تاريخاً آخر أو اترك الوقت المفضّل فارغاً.</p>}
                           {!loadingAppointmentSlots && appointmentSlots?.open
                             && appointmentSlots.slots.length === 0
                             && <p className="admin-form-note">لا توجد أوقات متاحة في هذا اليوم.</p>}
@@ -488,10 +594,29 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                         onClick={() => setEditingBookingId('')}>إلغاء</button>
                     </div>
                   </form>
+                    </section>
+                  </div>,
+                  document.body,
                 )}
-                {confirmingBookingId === booking.id && (
+                {confirmingBookingId === booking.id && createPortal(
+                  <div className="admin-booking-modal-backdrop" role="presentation"
+                    onMouseDown={(event) => {
+                      if (event.target === event.currentTarget) setConfirmingBookingId('')
+                    }}>
+                    <section className="admin-booking-modal" role="dialog" aria-modal="true"
+                      aria-labelledby="booking-confirm-title" dir="rtl">
+                    <div className="admin-booking-modal-heading">
+                      <div><span className="admin-eyebrow">{booking.customerName || 'العميل'} · {booking.serviceName}</span>
+                        <h2 id="booking-confirm-title">اختيار موعد وتأكيد الحجز</h2></div>
+                      <button type="button" className="admin-icon-button" aria-label="إغلاق"
+                        onClick={() => setConfirmingBookingId('')}><X size={17} /></button>
+                    </div>
                   <form className="admin-booking-confirm" onSubmit={(event) => void confirmWithTime(event, booking)}>
-                    <label>تاريخ الموعد
+                    {booking.preferredDate && <p className="admin-form-note">
+                      التاريخ الذي فضّله العميل: {new Intl.DateTimeFormat('ar', { dateStyle: 'medium' })
+                        .format(new Date(`${booking.preferredDate}T12:00:00`))}
+                    </p>}
+                    <label>تاريخ الموعد المعتمد
                       <input type="date" min={getShopDate()} value={appointmentDate}
                         onChange={(event) => {
                           setAppointmentDate(event.target.value)
@@ -501,7 +626,7 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                         }}
                         onClick={(event) => event.currentTarget.showPicker?.()} required />
                     </label>
-                    <label>اختر وقتاً متاحاً
+                    <label>وقت الموعد المعتمد
                       <select name="startsAt" value={selectedAppointmentSlot}
                         onChange={(event) => setSelectedAppointmentSlot(event.target.value)} required>
                         <option value="" disabled>اختر الوقت</option>
@@ -510,14 +635,130 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                         ))}
                       </select>
                     </label>
-                    <button className="admin-primary-button" disabled={busyBookingId === booking.id}>
+                    {!loadingAppointmentSlots && appointmentSlots && !appointmentSlots.open
+                      && <p className="admin-form-note">المحل مغلق في هذا التاريخ. اختر يوماً مفتوحاً لتحديد موعد التأكيد.</p>}
+                    {!loadingAppointmentSlots && appointmentSlots?.open && appointmentSlots.slots.length === 0
+                      && <p className="admin-form-note">لا توجد أوقات متاحة في هذا اليوم؛ اختر تاريخاً آخر.</p>}
+                    {loadingAppointmentSlots && <p className="admin-form-note" role="status">جارٍ تحميل الأوقات المتاحة...</p>}
+                    <button className="admin-primary-button"
+                      disabled={busyBookingId === booking.id || loadingAppointmentSlots
+                        || !appointmentSlots?.open || !selectedAppointmentSlot}>
                       {busyBookingId === booking.id ? 'جارٍ التأكيد...' : 'تأكيد الموعد'}
                     </button>
                     <button className="admin-secondary-button" type="button"
                       onClick={() => setConfirmingBookingId('')}>إلغاء</button>
                   </form>
+                    </section>
+                  </div>,
+                  document.body,
                 )}
-                </div>
+                {completingBookingId === booking.id && createPortal(
+                  <div className="admin-booking-modal-backdrop" role="presentation"
+                    onMouseDown={(event) => {
+                      if (event.target === event.currentTarget) setCompletingBookingId('')
+                    }}>
+                    <section className="admin-booking-modal admin-checkout-modal" role="dialog" aria-modal="true"
+                      aria-labelledby="booking-checkout-title" dir="rtl">
+                      <div className="admin-booking-modal-heading">
+                        <div><span className="admin-eyebrow">{booking.customerName || 'العميل'} · {booking.serviceName}</span>
+                          <h2 id="booking-checkout-title">إنهاء الموعد والتحصيل</h2></div>
+                        <button type="button" className="admin-icon-button" aria-label="إغلاق"
+                          onClick={() => setCompletingBookingId('')}><X size={17} /></button>
+                      </div>
+                      {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
+                      <form className="admin-checkout-form" onSubmit={(event) => void checkoutBooking(event, booking)}>
+                        <div className="admin-checkout-summary">
+                          <span>قيمة الخدمة</span><strong>{booking.servicePrice.toLocaleString('ar')} ₪</strong>
+                          <span>إجمالي الفاتورة</span>
+                          <strong>{checkoutTotal(booking.servicePrice, checkoutLines).toLocaleString('ar')} ₪</strong>
+                        </div>
+                        <div className="admin-checkout-products">
+                          <div className="admin-panel-heading">
+                            <h3>منتجات إضافية</h3>
+                            <button type="button" className="admin-secondary-button"
+                              disabled={!productsLoaded || !products.some((product) => product.active)}
+                              onClick={() => setCheckoutLines((lines) => [...lines, {
+                                key: Date.now(), productId: '', quantity: '1', unitPrice: '',
+                              }])}><Plus size={15} /> إضافة منتج</button>
+                          </div>
+                          {!productsLoaded
+                            ? <p className="admin-form-note">جارٍ تحميل منتجات المخزون...</p>
+                            : !products.some((product) => product.active)
+                            ? <p className="admin-form-note">أضف المنتجات أولاً من صفحة المخزون لتسجيل بيعها هنا.</p>
+                            : checkoutLines.map((line) => (
+                              <div className="admin-checkout-product-row" key={line.key}>
+                                <label>المنتج
+                                  <select required value={line.productId}
+                                    onChange={(event) => {
+                                      const selectedProduct = products.find((product) => product.id === event.target.value)
+                                      setCheckoutLines((lines) => lines.map((item) => item.key === line.key
+                                        ? {
+                                            ...item,
+                                            productId: event.target.value,
+                                            unitPrice: selectedProduct && selectedProduct.salePrice > 0
+                                              ? selectedProduct.salePrice.toFixed(2) : '',
+                                          }
+                                        : item))
+                                    }}>
+                                    <option value="" disabled>اختر منتجاً</option>
+                                    {products.filter((product) => product.active).map((product) =>
+                                      <option key={product.id} value={product.id}>
+                                        {product.name} · المتوفر {product.quantity.toLocaleString('ar')} {product.unit}
+                                      </option>)}
+                                  </select>
+                                </label>
+                                <label>الكمية
+                                  <input type="number" min="1" step="1"
+                                    max={products.find((product) => product.id === line.productId)?.quantity}
+                                    required value={line.quantity} disabled={!line.productId}
+                                    onChange={(event) => setCheckoutLines((lines) => lines.map((item) =>
+                                      item.key === line.key ? { ...item, quantity: event.target.value } : item))} />
+                                </label>
+                                <label>سعر الوحدة (₪)
+                                  <input type="number" min="0.01" step="0.01" required
+                                    value={line.unitPrice} disabled={!line.productId}
+                                    onChange={(event) => setCheckoutLines((lines) => lines.map((item) =>
+                                      item.key === line.key ? { ...item, unitPrice: event.target.value } : item))} />
+                                </label>
+                                <button type="button" className="admin-icon-button admin-icon-button--danger"
+                                  aria-label="حذف المنتج من الفاتورة"
+                                  onClick={() => setCheckoutLines((lines) => lines.filter((item) => item.key !== line.key))}>
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            ))}
+                        </div>
+                        <label>المبلغ المقبوض (₪)
+                          <input type="number" min="0" max={checkoutTotal(booking.servicePrice, checkoutLines)}
+                            step="0.01" required value={checkoutAmount || checkoutTotal(booking.servicePrice, checkoutLines).toFixed(2)}
+                            onChange={(event) => setCheckoutAmount(event.target.value)} />
+                        </label>
+                        <label>طريقة الدفع
+                          <select value={checkoutMethod} onChange={(event) => setCheckoutMethod(event.target.value)}>
+                            <option value="CASH">نقداً</option>
+                            <option value="CARD">بطاقة</option>
+                            <option value="TRANSFER">تحويل</option>
+                            <option value="OTHER">أخرى</option>
+                          </select>
+                        </label>
+                        <label>ملاحظات
+                          <input maxLength={1000} value={checkoutNotes}
+                            onChange={(event) => setCheckoutNotes(event.target.value)} />
+                        </label>
+                        <p className="admin-form-note">سيُسجل المبلغ غير المقبوض كدين، وتُخصم المنتجات المباعة من المخزون.</p>
+                        <div className="admin-inline-actions">
+                          <button className="admin-primary-button" disabled={busyBookingId === booking.id}>
+                            {busyBookingId === booking.id ? 'جارٍ حفظ الفاتورة...' : 'إنهاء الحجز وحفظ الفاتورة'}
+                          </button>
+                          <button type="button" className="admin-secondary-button"
+                            onClick={() => setCompletingBookingId('')}>إلغاء</button>
+                        </div>
+                      </form>
+                    </section>
+                  </div>,
+                  document.body,
+                )}
+                </Fragment>
               ))}
             </div>
             <div className="admin-pagination">

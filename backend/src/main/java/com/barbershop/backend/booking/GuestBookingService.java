@@ -13,9 +13,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import com.barbershop.backend.admin.OwnerPushNotification;
 import com.barbershop.backend.booking.dto.GuestBookingRequest;
 import com.barbershop.backend.booking.dto.GuestBookingResponse;
 import com.barbershop.backend.customer.CustomerEntity;
@@ -43,6 +45,7 @@ public class GuestBookingService {
 	private final ObjectMapper objectMapper;
 	private final RateLimitService rateLimitService;
 	private final ShopScheduleService shopScheduleService;
+	private final ApplicationEventPublisher eventPublisher;
 
 	public GuestBookingService(
 			BookingRepository bookingRepository,
@@ -53,7 +56,8 @@ public class GuestBookingService {
 			JdbcTemplate jdbcTemplate,
 			ObjectMapper objectMapper,
 			RateLimitService rateLimitService,
-			ShopScheduleService shopScheduleService) {
+			ShopScheduleService shopScheduleService,
+			ApplicationEventPublisher eventPublisher) {
 		this.bookingRepository = bookingRepository;
 		this.bookingSettingsRepository = bookingSettingsRepository;
 		this.customerRepository = customerRepository;
@@ -63,6 +67,7 @@ public class GuestBookingService {
 		this.objectMapper = objectMapper;
 		this.rateLimitService = rateLimitService;
 		this.shopScheduleService = shopScheduleService;
+		this.eventPublisher = eventPublisher;
 	}
 
 	@Transactional
@@ -117,6 +122,7 @@ public class GuestBookingService {
 				service,
 				validated.mode(),
 				validated.startsAt(),
+				validated.preferredDate(),
 				validated.queueDate(),
 				queuePosition,
 				validated.notes()));
@@ -131,6 +137,10 @@ public class GuestBookingService {
 				booking.getCreatedAt());
 		String location = "/api/bookings/" + booking.getId();
 		updateIdempotencyResponse(validated.idempotencyKey(), booking.getId(), response, location);
+		eventPublisher.publishEvent(new OwnerPushNotification(
+				"طلب حجز جديد",
+				validated.customerName() + " · " + service.getName(),
+				"/owner/bookings"));
 		return new BookingCreationResult(201, location, response);
 	}
 
@@ -164,11 +174,12 @@ public class GuestBookingService {
 		}
 
 		Instant startsAt = request.startsAt();
+		LocalDate preferredDate = request.preferredDate();
 		LocalDate queueDate = request.queueDate();
 		switch (request.bookingMode()) {
 			case EXACT_APPOINTMENT -> {
-				if (startsAt == null || queueDate != null) {
-					throw badRequest("Invalid appointment fields", "Exact appointments require startsAt and must not include queueDate.");
+				if (startsAt == null || preferredDate != null || queueDate != null) {
+					throw badRequest("Invalid appointment fields", "Exact appointments require startsAt and must not include preferredDate or queueDate.");
 				}
 				requireFutureStart(startsAt);
 			}
@@ -176,18 +187,25 @@ public class GuestBookingService {
 				if (queueDate != null) {
 					throw badRequest("Invalid confirmation request", "Confirmation requests must not include queueDate.");
 				}
+				if (preferredDate != null && preferredDate.isBefore(LocalDate.now(SHOP_ZONE))) {
+					throw badRequest("Invalid preferred date", "Preferred date must not be before the current shop-local date.");
+				}
 				if (startsAt != null) {
 					requireFutureStart(startsAt);
+					if (preferredDate != null
+							&& !LocalDate.ofInstant(startsAt, SHOP_ZONE).equals(preferredDate)) {
+						throw badRequest("Invalid preferred time", "Preferred time must fall on the selected preferred date.");
+					}
 				}
 			}
 			case DAY_QUEUE -> {
-				if (startsAt != null || queueDate == null) {
+				if (startsAt != null || preferredDate != null || queueDate == null) {
 					throw badRequest("Invalid day queue request", "Day queue requests require queueDate and must not include startsAt.");
 				}
 				requireValidQueueDate(queueDate);
 			}
 			case SAME_DAY_QUEUE -> {
-				if (startsAt != null || queueDate != null) {
+				if (startsAt != null || preferredDate != null || queueDate != null) {
 					throw badRequest("Invalid same-day queue request", "Same-day queue requests must not include startsAt or queueDate.");
 				}
 				queueDate = LocalDate.now(SHOP_ZONE);
@@ -202,6 +220,7 @@ public class GuestBookingService {
 				name,
 				phone,
 				startsAt,
+				preferredDate,
 				queueDate,
 				request.notes(),
 				request.bookForSomeoneElse());
@@ -308,6 +327,7 @@ public class GuestBookingService {
 					request.customerName(),
 					request.customerPhone() == null ? "" : request.customerPhone(),
 					request.startsAt() == null ? "" : request.startsAt().toString(),
+					request.preferredDate() == null ? "" : request.preferredDate().toString(),
 					request.queueDate() == null ? "" : request.queueDate().toString(),
 					request.notes() == null ? "" : request.notes(),
 					request.bookForSomeoneElse()));
@@ -340,6 +360,7 @@ public class GuestBookingService {
 			String customerName,
 			String customerPhone,
 			Instant startsAt,
+			LocalDate preferredDate,
 			LocalDate queueDate,
 			String notes,
 			boolean bookForSomeoneElse) {

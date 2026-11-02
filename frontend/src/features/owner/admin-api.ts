@@ -25,6 +25,13 @@ export interface AdminCustomerDetails {
     servicePrice: number
     status: BookingStatus
     createdAt: string
+    products: Array<{
+      productName: string
+      unit: string
+      quantity: number
+      unitPrice: number
+      lineTotal: number
+    }>
   }>
   payments: AdminPayment[]
   accounts: Array<{
@@ -81,12 +88,47 @@ export interface AdminReport {
   outstandingDebt: number
 }
 
+export interface AdminBestSellingProduct {
+  productName: string
+  unit: string
+  quantitySold: number
+  salesTotal: number
+  bookingCount: number
+}
+
+export interface AdminBestSellingService {
+  serviceName: string
+  bookingCount: number
+  serviceRevenue: number
+}
+
+export interface AdminBookingSalesReport {
+  bookingId: string
+  customerName: string
+  completedAt: string
+  serviceName: string
+  servicePrice: number
+  products: Array<{
+    productName: string
+    unit: string
+    quantity: number
+    unitPrice: number
+    lineTotal: number
+  }>
+  invoiceTotal: number
+  amountPaid: number
+  balance: number
+}
+
 export interface AdminProduct {
   id: string
   name: string
   unit: string
   quantity: number
   lowStockThreshold: number
+  purchasePrice: number
+  salePrice: number
+  imageUrl: string | null
   active: boolean
 }
 

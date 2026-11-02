@@ -3,6 +3,7 @@ package com.barbershop.backend.admin;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -20,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.barbershop.backend.admin.AdminDtos.CustomerBooking;
 import com.barbershop.backend.admin.AdminDtos.CustomerAccountSummary;
@@ -28,9 +31,14 @@ import com.barbershop.backend.admin.AdminDtos.CustomerDetails;
 import com.barbershop.backend.admin.AdminDtos.CustomerSummary;
 import com.barbershop.backend.admin.AdminDtos.CustomerUpdateRequest;
 import com.barbershop.backend.admin.AdminDtos.BookingEmployeeRequest;
+import com.barbershop.backend.admin.AdminDtos.CheckoutProduct;
+import com.barbershop.backend.admin.AdminDtos.CheckoutRequest;
 import com.barbershop.backend.admin.AdminDtos.DashboardResponse;
 import com.barbershop.backend.admin.AdminDtos.DashboardTrendPoint;
 import com.barbershop.backend.admin.AdminDtos.AdminSettingsRequest;
+import com.barbershop.backend.admin.AdminDtos.BestSellingProduct;
+import com.barbershop.backend.admin.AdminDtos.BestSellingService;
+import com.barbershop.backend.admin.AdminDtos.BookingSalesReport;
 import com.barbershop.backend.admin.AdminDtos.Employee;
 import com.barbershop.backend.admin.AdminDtos.EmployeePayment;
 import com.barbershop.backend.admin.AdminDtos.EmployeePaymentResponse;
@@ -45,9 +53,11 @@ import com.barbershop.backend.admin.AdminDtos.PageResponse;
 import com.barbershop.backend.admin.AdminDtos.Payment;
 import com.barbershop.backend.admin.AdminDtos.PaymentRequest;
 import com.barbershop.backend.admin.AdminDtos.Product;
+import com.barbershop.backend.admin.AdminDtos.ProductImage;
 import com.barbershop.backend.admin.AdminDtos.ProductRequest;
 import com.barbershop.backend.admin.AdminDtos.ProductUpdateRequest;
 import com.barbershop.backend.admin.AdminDtos.ReportResponse;
+import com.barbershop.backend.admin.AdminDtos.RetailItem;
 import com.barbershop.backend.admin.AdminDtos.ShopProfile;
 import com.barbershop.backend.booking.ShopScheduleService;
 
@@ -84,11 +94,16 @@ public class AdminManagementService {
 			),
 			debt_totals AS (
 			    SELECT c.group_key,
-			           coalesce(sum(GREATEST(b.service_price_snapshot - coalesce(bp.paid, 0), 0)), 0) AS debt
+			           coalesce(sum(GREATEST(
+			               b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(bp.paid, 0), 0)), 0) AS debt
 			    FROM customer_keys c
 			    JOIN bookings b ON b.customer_id = c.id AND b.status = 'COMPLETED'
 			    LEFT JOIN (SELECT booking_id, sum(amount) AS paid FROM booking_payments GROUP BY booking_id) bp
 			      ON bp.booking_id = b.id
+			    LEFT JOIN (
+			        SELECT booking_id, sum(line_total) AS retail_total
+			        FROM booking_retail_items GROUP BY booking_id
+			    ) ri ON ri.booking_id = b.id
 			    GROUP BY c.group_key
 			)
 			""";
@@ -112,14 +127,17 @@ public class AdminManagementService {
 	private final JdbcTemplate jdbc;
 	private final PasswordEncoder passwordEncoder;
 	private final ShopScheduleService shopScheduleService;
+	private final ApplicationEventPublisher eventPublisher;
 
 	public AdminManagementService(
 			JdbcTemplate jdbc,
 			PasswordEncoder passwordEncoder,
-			ShopScheduleService shopScheduleService) {
+			ShopScheduleService shopScheduleService,
+			ApplicationEventPublisher eventPublisher) {
 		this.jdbc = jdbc;
 		this.passwordEncoder = passwordEncoder;
 		this.shopScheduleService = shopScheduleService;
+		this.eventPublisher = eventPublisher;
 	}
 
 	@Transactional(readOnly = true)
@@ -134,9 +152,14 @@ public class AdminManagementService {
 		BigDecimal collected = scalarMoney("SELECT coalesce(sum(amount), 0) FROM booking_payments WHERE paid_at >= ? AND paid_at < ?",
 				start(today), start(today.plusDays(1)));
 		BigDecimal debt = scalarMoney("""
-				SELECT coalesce(sum(GREATEST(b.service_price_snapshot - coalesce(p.paid, 0), 0)), 0)
+				SELECT coalesce(sum(GREATEST(
+				    b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0), 0)), 0)
 				FROM bookings b LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
 				  ON p.booking_id = b.id
+				LEFT JOIN (
+				    SELECT booking_id, sum(line_total) retail_total
+				    FROM booking_retail_items GROUP BY booking_id
+				) ri ON ri.booking_id = b.id
 				WHERE b.status = 'COMPLETED'
 				""");
 		long lowStock = scalarLong("SELECT count(*) FROM inventory_products WHERE active AND quantity <= low_stock_threshold");
@@ -219,6 +242,20 @@ public class AdminManagementService {
 				LEFT JOIN debt_totals dt ON dt.group_key = g.group_key
 				WHERE g.group_key = ?
 				""", CUSTOMER_ROW, groupKey);
+		Map<UUID, List<RetailItem>> retailItemsByBooking = new java.util.HashMap<>();
+		jdbc.query("""
+				SELECT ri.booking_id, ri.product_name_snapshot, ri.product_unit_snapshot,
+				       ri.quantity, ri.unit_price, ri.line_total
+				FROM booking_retail_items ri JOIN bookings b ON b.id = ri.booking_id
+				JOIN customers c ON c.id = b.customer_id
+				WHERE CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'id:' || c.id::text END = ?
+				ORDER BY ri.created_at, ri.id
+				""", (org.springframework.jdbc.core.RowCallbackHandler) rs -> retailItemsByBooking
+				.computeIfAbsent(rs.getObject("booking_id", UUID.class), ignored -> new java.util.ArrayList<>())
+				.add(new RetailItem(rs.getString("product_name_snapshot"), rs.getString("product_unit_snapshot"),
+						rs.getBigDecimal("quantity"), rs.getBigDecimal("unit_price"), rs.getBigDecimal("line_total"))), groupKey);
 		List<CustomerBooking> bookings = jdbc.query("""
 				SELECT b.id, b.service_name_snapshot, b.service_price_snapshot, b.status, b.created_at
 				FROM bookings b JOIN customers c ON c.id = b.customer_id
@@ -226,12 +263,16 @@ public class AdminManagementService {
 				           THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
 				           ELSE 'id:' || c.id::text END = ?
 				ORDER BY b.created_at DESC
-				""", (rs, row) -> new CustomerBooking(
-						rs.getObject("id", UUID.class),
-						rs.getString("service_name_snapshot"),
-						rs.getBigDecimal("service_price_snapshot"),
-						rs.getString("status"),
-						rs.getTimestamp("created_at").toInstant()), groupKey);
+				""", (rs, row) -> {
+					UUID bookingId = rs.getObject("id", UUID.class);
+					return new CustomerBooking(
+							bookingId,
+							rs.getString("service_name_snapshot"),
+							rs.getBigDecimal("service_price_snapshot"),
+							rs.getString("status"),
+							rs.getTimestamp("created_at").toInstant(),
+							retailItemsByBooking.getOrDefault(bookingId, List.of()));
+				}, groupKey);
 		List<Payment> payments = paymentsForGroup(groupKey);
 		List<CustomerAccountSummary> accounts = jdbc.query("""
 				SELECT DISTINCT a.id, a.username_normalized, a.display_name, a.phone_number
@@ -316,14 +357,17 @@ public class AdminManagementService {
 			return jdbc.queryForObject("""
 					SELECT b.id AS booking_id, b.status, c.id AS customer_id, c.name AS customer_name,
 					       b.service_price_snapshot AS service_value, b.employee_id,
-					       coalesce((SELECT sum(amount) FROM booking_payments WHERE booking_id = b.id), 0) AS paid
+					       coalesce((SELECT sum(amount) FROM booking_payments WHERE booking_id = b.id), 0) AS paid,
+					       coalesce((SELECT sum(line_total) FROM booking_retail_items WHERE booking_id = b.id), 0) AS retail_total
 					FROM bookings b JOIN customers c ON c.id = b.customer_id
 					WHERE b.id = ? FOR UPDATE OF b
 					""", (rs, row) -> {
 				if (!"COMPLETED".equals(rs.getString("status"))) {
 					throw new ResponseStatusException(HttpStatus.CONFLICT, "Only completed bookings can be paid.");
 				}
-				BigDecimal remaining = rs.getBigDecimal("service_value").subtract(rs.getBigDecimal("paid"));
+				BigDecimal previouslyPaid = rs.getBigDecimal("paid");
+				BigDecimal serviceValue = rs.getBigDecimal("service_value");
+				BigDecimal remaining = serviceValue.add(rs.getBigDecimal("retail_total")).subtract(previouslyPaid);
 				if (request.amount().compareTo(remaining) > 0) {
 					throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment exceeds the outstanding booking balance.");
 				}
@@ -335,12 +379,14 @@ public class AdminManagementService {
 						VALUES (?, ?, ?, ?, ?, ?)
 						""", paymentId, bookingId, customerId, request.amount(), request.method(),
 						trimToNull(request.notes()));
-				if (employeeId != null) {
+				BigDecimal serviceBalance = serviceValue.subtract(previouslyPaid).max(BigDecimal.ZERO);
+				BigDecimal commissionableAmount = request.amount().min(serviceBalance);
+				if (employeeId != null && commissionableAmount.signum() > 0) {
 					BigDecimal commissionPercent = scalarMoney(
 							"SELECT coalesce((SELECT commission_percent FROM shop_employees WHERE id = ? AND active = TRUE), 0)",
 							employeeId);
 					if (commissionPercent.signum() > 0) {
-						BigDecimal commission = request.amount().multiply(commissionPercent)
+						BigDecimal commission = commissionableAmount.multiply(commissionPercent)
 								.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 						jdbc.update("""
 								INSERT INTO employee_commissions (employee_id, payment_id, amount)
@@ -353,6 +399,110 @@ public class AdminManagementService {
 			}, bookingId);
 		} catch (EmptyResultDataAccessException exception) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found.");
+		}
+	}
+
+	@Transactional
+	public void checkoutBooking(UUID bookingId, CheckoutRequest request, String actor) {
+		requireChoice(request.method(), PAYMENT_METHODS, "Unsupported payment method.");
+		if (request.amount().scale() > 2) throw badRequest("Payment amount must have no more than two decimal places.");
+		Map<String, Object> booking;
+		try {
+			booking = jdbc.queryForMap("""
+					SELECT b.status, b.service_price_snapshot, b.employee_id, c.id customer_id
+					FROM bookings b JOIN customers c ON c.id = b.customer_id
+					WHERE b.id = ? FOR UPDATE OF b
+					""", bookingId);
+		} catch (EmptyResultDataAccessException exception) {
+			throw notFound("Booking not found.");
+		}
+		if (!"CONFIRMED".equals(booking.get("status"))) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "Only confirmed bookings can be checked out.");
+		}
+
+		UUID employeeId = (UUID) booking.get("employee_id");
+		UUID customerId = (UUID) booking.get("customer_id");
+		BigDecimal serviceValue = (BigDecimal) booking.get("service_price_snapshot");
+		BigDecimal alreadyPaid = scalarMoney(
+				"SELECT coalesce(sum(amount), 0) FROM booking_payments WHERE booking_id = ?", bookingId);
+		BigDecimal retailTotal = BigDecimal.ZERO;
+
+		for (CheckoutProduct item : request.products()) {
+			if (item.quantity().scale() > 3 || item.unitPrice().scale() > 2) {
+				throw badRequest("Product quantities must have at most three decimals and prices at most two.");
+			}
+			Map<String, Object> product;
+			try {
+				product = jdbc.queryForMap("""
+						SELECT name, unit, quantity, low_stock_threshold, active
+						FROM inventory_products WHERE id = ? FOR UPDATE
+						""", item.productId());
+			} catch (EmptyResultDataAccessException exception) {
+				throw notFound("Inventory product not found.");
+			}
+			if (!Boolean.TRUE.equals(product.get("active"))) {
+				throw new ResponseStatusException(HttpStatus.CONFLICT, "An inactive product cannot be sold.");
+			}
+			BigDecimal stock = (BigDecimal) product.get("quantity");
+			if (stock.compareTo(item.quantity()) < 0) {
+				throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient inventory for " + product.get("name") + ".");
+			}
+
+			String productName = (String) product.get("name");
+			BigDecimal lineTotal = item.quantity().multiply(item.unitPrice()).setScale(2, RoundingMode.HALF_UP);
+			retailTotal = retailTotal.add(lineTotal);
+			jdbc.update("""
+					INSERT INTO booking_retail_items
+						(id, booking_id, product_id, product_name_snapshot, product_unit_snapshot,
+						 quantity, unit_price, line_total)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+					""", UUID.randomUUID(), bookingId, item.productId(), productName, product.get("unit"),
+					item.quantity(), item.unitPrice(), lineTotal);
+			jdbc.update("""
+					UPDATE inventory_products
+					SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+					WHERE id = ? AND quantity >= ?
+					""", item.quantity(), item.productId(), item.quantity());
+			insertMovement(item.productId(), "SALE", item.quantity(), null,
+					"Sale with booking " + bookingId, actor);
+			BigDecimal remainingStock = stock.subtract(item.quantity());
+			BigDecimal lowStockThreshold = (BigDecimal) product.get("low_stock_threshold");
+			if (stock.compareTo(lowStockThreshold) > 0 && remainingStock.compareTo(lowStockThreshold) <= 0) {
+				eventPublisher.publishEvent(new OwnerPushNotification(
+						"تنبيه انخفاض المخزون",
+						productName + " · المتبقي " + remainingStock + " " + product.get("unit"),
+						"/owner/inventory"));
+			}
+		}
+
+		BigDecimal outstanding = serviceValue.add(retailTotal).subtract(alreadyPaid);
+		if (request.amount().compareTo(outstanding) > 0) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment exceeds the outstanding checkout balance.");
+		}
+
+		jdbc.update("UPDATE bookings SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = ?", bookingId);
+		if (request.amount().signum() > 0) {
+			UUID paymentId = UUID.randomUUID();
+			jdbc.update("""
+					INSERT INTO booking_payments (id, booking_id, customer_id, amount, method, notes)
+					VALUES (?, ?, ?, ?, ?, ?)
+					""", paymentId, bookingId, customerId, request.amount(), request.method(),
+					trimToNull(request.notes()));
+			if (employeeId != null) {
+				BigDecimal serviceBalance = serviceValue.subtract(alreadyPaid).max(BigDecimal.ZERO);
+				BigDecimal commissionableAmount = request.amount().min(serviceBalance);
+				BigDecimal commissionPercent = scalarMoney(
+						"SELECT coalesce((SELECT commission_percent FROM shop_employees WHERE id = ? AND active = TRUE), 0)",
+						employeeId);
+				if (commissionPercent.signum() > 0 && commissionableAmount.signum() > 0) {
+					BigDecimal commission = commissionableAmount.multiply(commissionPercent)
+							.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+					jdbc.update("""
+							INSERT INTO employee_commissions (employee_id, payment_id, amount)
+							VALUES (?, ?, ?)
+							""", employeeId, paymentId, commission);
+				}
+			}
 		}
 	}
 
@@ -386,12 +536,16 @@ public class AdminManagementService {
 		return jdbc.query("""
 				SELECT b.id booking_id, c.id customer_id, c.name customer_name, c.phone_number,
 				       b.service_name_snapshot, b.service_price_snapshot,
-				       b.service_price_snapshot - coalesce(p.paid, 0) balance
+				       b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0) balance
 				FROM bookings b JOIN customers c ON c.id = b.customer_id
 				LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
 				  ON p.booking_id = b.id
+				LEFT JOIN (
+				    SELECT booking_id, sum(line_total) retail_total
+				    FROM booking_retail_items GROUP BY booking_id
+				) ri ON ri.booking_id = b.id
 				WHERE b.status = 'COMPLETED'
-				  AND b.service_price_snapshot > coalesce(p.paid, 0)
+				  AND b.service_price_snapshot + coalesce(ri.retail_total, 0) > coalesce(p.paid, 0)
 				  AND (lower(c.name) LIKE ? OR coalesce(c.phone_number, '') LIKE ?)
 				ORDER BY b.created_at, b.id LIMIT 1000
 				""", (rs, row) -> new DebtResponse(
@@ -459,42 +613,187 @@ public class AdminManagementService {
 				WHERE expense_date >= ? AND expense_date <= ?
 				""", fromDate, toDate);
 		BigDecimal debt = scalarMoney("""
-				SELECT coalesce(sum(GREATEST(b.service_price_snapshot - coalesce(p.paid, 0), 0)), 0)
+				SELECT coalesce(sum(GREATEST(
+				    b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0), 0)), 0)
 				FROM bookings b LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
 				  ON p.booking_id = b.id
+				LEFT JOIN (
+				    SELECT booking_id, sum(line_total) retail_total
+				    FROM booking_retail_items GROUP BY booking_id
+				) ri ON ri.booking_id = b.id
 				WHERE b.status = 'COMPLETED'
 				""");
 		return new ReportResponse(fromDate, toDate, revenue, expenses, revenue.subtract(expenses), debt);
 	}
 
 	@Transactional(readOnly = true)
+	public List<BestSellingProduct> bestSellingProducts(LocalDate fromDate, LocalDate toDate) {
+		LocalDate[] range = validatedSalesRange(fromDate, toDate);
+		return jdbc.query("""
+				SELECT ri.product_name_snapshot, ri.product_unit_snapshot,
+				       sum(ri.quantity) AS quantity_sold, sum(ri.line_total) AS sales_total,
+				       count(DISTINCT ri.booking_id) AS booking_count
+				FROM booking_retail_items ri
+				JOIN bookings b ON b.id = ri.booking_id
+				WHERE b.status = 'COMPLETED'
+				  AND b.updated_at >= ? AND b.updated_at < ?
+				GROUP BY ri.product_name_snapshot, ri.product_unit_snapshot
+				ORDER BY quantity_sold DESC, sales_total DESC, ri.product_name_snapshot
+				""", (rs, row) -> new BestSellingProduct(
+						rs.getString("product_name_snapshot"),
+						rs.getString("product_unit_snapshot"),
+						rs.getBigDecimal("quantity_sold"),
+						rs.getBigDecimal("sales_total"),
+						rs.getLong("booking_count")),
+				start(range[0]), start(range[1].plusDays(1)));
+	}
+
+	@Transactional(readOnly = true)
+	public List<BestSellingService> bestSellingServices(LocalDate fromDate, LocalDate toDate) {
+		LocalDate[] range = validatedSalesRange(fromDate, toDate);
+		return jdbc.query("""
+				SELECT b.service_name_snapshot, count(*) AS booking_count,
+				       sum(b.service_price_snapshot) AS service_revenue
+				FROM bookings b
+				WHERE b.status = 'COMPLETED'
+				  AND b.updated_at >= ? AND b.updated_at < ?
+				GROUP BY b.service_name_snapshot
+				ORDER BY booking_count DESC, service_revenue DESC, b.service_name_snapshot
+				""", (rs, row) -> new BestSellingService(
+						rs.getString("service_name_snapshot"),
+						rs.getLong("booking_count"),
+						rs.getBigDecimal("service_revenue")),
+				start(range[0]), start(range[1].plusDays(1)));
+	}
+
+	@Transactional(readOnly = true)
+	public List<BookingSalesReport> bookingSales(LocalDate fromDate, LocalDate toDate) {
+		LocalDate[] range = validatedSalesRange(fromDate, toDate);
+		List<BookingSalesBase> bookings = jdbc.query("""
+				SELECT b.id, coalesce(c.name, ca.display_name, 'عميل') AS customer_name,
+				       b.updated_at AS completed_at, b.service_name_snapshot, b.service_price_snapshot,
+				       coalesce(ri.retail_total, 0) AS retail_total, coalesce(p.paid_total, 0) AS paid_total
+				FROM bookings b
+				LEFT JOIN customers c ON c.id = b.customer_id
+				LEFT JOIN customer_accounts ca ON ca.id = b.customer_account_id
+				LEFT JOIN (
+				    SELECT booking_id, sum(line_total) AS retail_total
+				    FROM booking_retail_items GROUP BY booking_id
+				) ri ON ri.booking_id = b.id
+				LEFT JOIN (
+				    SELECT booking_id, sum(amount) AS paid_total
+				    FROM booking_payments GROUP BY booking_id
+				) p ON p.booking_id = b.id
+				WHERE b.status = 'COMPLETED'
+				  AND b.updated_at >= ? AND b.updated_at < ?
+				ORDER BY b.updated_at DESC, b.id
+				LIMIT 500
+				""", (rs, row) -> new BookingSalesBase(
+						rs.getObject("id", UUID.class),
+						rs.getString("customer_name"),
+						rs.getTimestamp("completed_at").toInstant(),
+						rs.getString("service_name_snapshot"),
+						rs.getBigDecimal("service_price_snapshot"),
+						rs.getBigDecimal("retail_total"),
+						rs.getBigDecimal("paid_total")),
+				start(range[0]), start(range[1].plusDays(1)));
+		if (bookings.isEmpty()) return List.of();
+
+		Map<UUID, List<RetailItem>> itemsByBooking = new java.util.HashMap<>();
+		String placeholders = String.join(",", java.util.Collections.nCopies(bookings.size(), "?"));
+		Object[] bookingIds = bookings.stream().map(BookingSalesBase::id).toArray();
+		jdbc.query("""
+				SELECT booking_id, product_name_snapshot, product_unit_snapshot, quantity, unit_price, line_total
+				FROM booking_retail_items WHERE booking_id IN (%s)
+				ORDER BY created_at, id
+				""".formatted(placeholders), (rs, row) -> {
+			UUID bookingId = rs.getObject("booking_id", UUID.class);
+			itemsByBooking.computeIfAbsent(bookingId, ignored -> new java.util.ArrayList<>()).add(
+					new RetailItem(rs.getString("product_name_snapshot"), rs.getString("product_unit_snapshot"),
+							rs.getBigDecimal("quantity"), rs.getBigDecimal("unit_price"), rs.getBigDecimal("line_total")));
+			return null;
+		}, bookingIds);
+
+		return bookings.stream().map(booking -> {
+			BigDecimal total = booking.servicePrice().add(booking.retailTotal());
+			BigDecimal balance = total.subtract(booking.paidTotal()).max(BigDecimal.ZERO);
+			return new BookingSalesReport(
+					booking.id(), booking.customerName(), booking.completedAt(), booking.serviceName(),
+					booking.servicePrice(), itemsByBooking.getOrDefault(booking.id(), List.of()),
+					total, booking.paidTotal(), balance);
+		}).toList();
+	}
+
+	private LocalDate[] validatedSalesRange(LocalDate fromDate, LocalDate toDate) {
+		if (fromDate == null || toDate == null) {
+			LocalDate today = LocalDate.now(SHOP_ZONE);
+			fromDate = fromDate == null ? today.withDayOfMonth(1) : fromDate;
+			toDate = toDate == null ? today : toDate;
+		}
+		validateDateRange(fromDate, toDate);
+		return new LocalDate[] { fromDate, toDate };
+	}
+
+	private record BookingSalesBase(
+			UUID id,
+			String customerName,
+			Instant completedAt,
+			String serviceName,
+			BigDecimal servicePrice,
+			BigDecimal retailTotal,
+			BigDecimal paidTotal) {
+	}
+
+	@Transactional(readOnly = true)
 	public List<Product> products() {
 		return jdbc.query("""
-				SELECT id, name, unit, quantity, low_stock_threshold, active
+				SELECT id, name, unit, quantity, low_stock_threshold, purchase_price, sale_price,
+				       CASE WHEN image_data IS NOT NULL THEN '/api/admin/inventory/products/' || id::text || '/image' END AS image_url,
+				       active
 				FROM inventory_products ORDER BY active DESC, name
 				""", (rs, row) -> new Product(rs.getObject("id", UUID.class), rs.getString("name"),
 				rs.getString("unit"), rs.getBigDecimal("quantity"), rs.getBigDecimal("low_stock_threshold"),
+				rs.getBigDecimal("purchase_price"), rs.getBigDecimal("sale_price"), rs.getString("image_url"),
 				rs.getBoolean("active")));
 	}
 
 	@Transactional
 	public Product createProduct(ProductRequest request, String actor) {
+		return createProduct(request, actor, null);
+	}
+
+	@Transactional
+	public Product createProduct(ProductRequest request, String actor, MultipartFile image) {
 		UUID id = UUID.randomUUID();
+		BigDecimal purchasePrice = request.purchasePrice() == null ? BigDecimal.ZERO : request.purchasePrice();
+		BigDecimal salePrice = request.salePrice() == null ? BigDecimal.ZERO : request.salePrice();
 		jdbc.update("""
-				INSERT INTO inventory_products (id, name, unit, quantity, low_stock_threshold)
-				VALUES (?, ?, ?, ?, ?)
-				""", id, request.name().trim(), request.unit().trim(), request.initialQuantity(),
-				request.lowStockThreshold());
-		if (request.initialQuantity().signum() > 0) {
-			insertMovement(id, "PURCHASE", request.initialQuantity(), null, "Initial stock", actor);
+				INSERT INTO inventory_products
+				    (id, name, unit, quantity, low_stock_threshold, purchase_price, sale_price)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				""", id, request.name().trim(), request.unit().trim(), request.availableQuantity(),
+				request.lowStockThreshold(), purchasePrice, salePrice);
+		if (request.availableQuantity().signum() > 0) {
+			insertMovement(id, "PURCHASE", request.availableQuantity(), purchasePrice, "Initial stock", actor);
 		}
+		if (image != null && !image.isEmpty()) saveProductImage(id, image);
 		return findProduct(id);
 	}
 
 	@Transactional
 	public Product recordMovement(UUID productId, InventoryMovement movement, String actor) {
 		requireChoice(movement.movementType(), MOVEMENT_TYPES, "Unsupported inventory movement.");
-		jdbc.queryForObject("SELECT id FROM inventory_products WHERE id = ? FOR UPDATE", UUID.class, productId);
+		Map<String, Object> product;
+		try {
+			product = jdbc.queryForMap("""
+					SELECT quantity, low_stock_threshold, name, unit
+					FROM inventory_products WHERE id = ? FOR UPDATE
+					""", productId);
+		} catch (EmptyResultDataAccessException exception) {
+			throw notFound("Inventory product not found.");
+		}
+		BigDecimal currentStock = (BigDecimal) product.get("quantity");
+		BigDecimal lowStockThreshold = (BigDecimal) product.get("low_stock_threshold");
 		BigDecimal delta = switch (movement.movementType()) {
 			case "PURCHASE", "ADJUSTMENT" -> movement.quantity();
 			case "CONSUMPTION", "SALE" -> movement.quantity().negate();
@@ -508,20 +807,48 @@ public class AdminManagementService {
 		if (updated != 1) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Movement would make inventory stock negative.");
 		}
+		BigDecimal newStock = currentStock.add(delta);
 		insertMovement(productId, movement.movementType(), movement.quantity(), movement.unitCost(),
 				trimToNull(movement.notes()), actor);
+		if (currentStock.compareTo(lowStockThreshold) > 0 && newStock.compareTo(lowStockThreshold) <= 0) {
+			eventPublisher.publishEvent(new OwnerPushNotification(
+					"تنبيه انخفاض المخزون",
+					product.get("name") + " · المتبقي " + newStock + " " + product.get("unit"),
+					"/owner/inventory"));
+		}
+		if ("PURCHASE".equals(movement.movementType()) && movement.unitCost() != null) {
+			jdbc.update("UPDATE inventory_products SET purchase_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+					movement.unitCost(), productId);
+		}
 		return findProduct(productId);
 	}
 
 	@Transactional
 	public Product updateProduct(UUID id, ProductUpdateRequest request) {
+		return updateProduct(id, request, null);
+	}
+
+	@Transactional
+	public Product updateProduct(UUID id, ProductUpdateRequest request, MultipartFile image) {
 		int updated = jdbc.update("""
 				UPDATE inventory_products SET name = ?, unit = ?, low_stock_threshold = ?,
+				       purchase_price = coalesce(?, purchase_price), sale_price = coalesce(?, sale_price),
 				       active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 				""", request.name().trim(), request.unit().trim(), request.lowStockThreshold(),
-				request.active(), id);
+				request.purchasePrice(), request.salePrice(), request.active(), id);
 		if (updated == 0) throw notFound("Inventory product not found.");
+		if (image != null && !image.isEmpty()) saveProductImage(id, image);
 		return findProduct(id);
+	}
+
+	@Transactional(readOnly = true)
+	public ProductImage productImage(UUID id) {
+		List<ProductImage> images = jdbc.query("""
+				SELECT image_content_type, image_data FROM inventory_products
+				WHERE id = ? AND image_data IS NOT NULL
+				""", (rs, row) -> new ProductImage(rs.getString("image_content_type"), rs.getBytes("image_data")), id);
+		if (images.isEmpty()) throw notFound("Inventory product image not found.");
+		return images.get(0);
 	}
 
 	@Transactional(readOnly = true)
@@ -707,10 +1034,50 @@ public class AdminManagementService {
 
 	private Product findProduct(UUID id) {
 		return jdbc.queryForObject("""
-				SELECT id, name, unit, quantity, low_stock_threshold, active
+				SELECT id, name, unit, quantity, low_stock_threshold, purchase_price, sale_price,
+				       CASE WHEN image_data IS NOT NULL THEN '/api/admin/inventory/products/' || id::text || '/image' END AS image_url,
+				       active
 				FROM inventory_products WHERE id = ?
 				""", (rs, row) -> new Product(id, rs.getString("name"), rs.getString("unit"),
-				rs.getBigDecimal("quantity"), rs.getBigDecimal("low_stock_threshold"), rs.getBoolean("active")), id);
+				rs.getBigDecimal("quantity"), rs.getBigDecimal("low_stock_threshold"),
+				rs.getBigDecimal("purchase_price"), rs.getBigDecimal("sale_price"),
+				rs.getString("image_url"), rs.getBoolean("active")), id);
+	}
+
+	private void saveProductImage(UUID id, MultipartFile image) {
+		if (image.getSize() > 2 * 1024 * 1024) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Product image must be 2 MB or smaller.");
+		}
+		try {
+			byte[] data = image.getBytes();
+			if (data.length == 0 || data.length > 2 * 1024 * 1024) {
+				throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Product image must be 2 MB or smaller.");
+			}
+			String contentType = imageContentType(data);
+			if (contentType == null) {
+				throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only PNG, JPEG, and WebP images are supported.");
+			}
+			int updated = jdbc.update("""
+					UPDATE inventory_products
+					SET image_data = ?, image_content_type = ?, updated_at = CURRENT_TIMESTAMP
+					WHERE id = ?
+					""", data, contentType, id);
+			if (updated == 0) throw notFound("Inventory product not found.");
+		} catch (IOException exception) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to read product image.", exception);
+		}
+	}
+
+	private String imageContentType(byte[] data) {
+		if (data.length >= 8
+				&& (data[0] & 0xff) == 0x89 && data[1] == 0x50 && data[2] == 0x4e
+				&& data[3] == 0x47 && data[4] == 0x0d && data[5] == 0x0a
+				&& data[6] == 0x1a && data[7] == 0x0a) return "image/png";
+		if (data.length >= 3 && (data[0] & 0xff) == 0xff && (data[1] & 0xff) == 0xd8
+				&& (data[2] & 0xff) == 0xff) return "image/jpeg";
+		if (data.length >= 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
+				&& data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P') return "image/webp";
+		return null;
 	}
 
 	private void insertMovement(

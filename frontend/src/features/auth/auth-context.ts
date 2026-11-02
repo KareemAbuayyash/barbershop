@@ -4,7 +4,7 @@ import type { CurrentUser } from '../../lib/api'
 export interface AuthContextValue {
   user: CurrentUser | null
   isLoading: boolean
-  login: (username: string, password: string) => Promise<CurrentUser>
+  login: (username: string, password: string, rememberMe?: boolean) => Promise<CurrentUser>
   logout: () => Promise<void>
   updateUsername: (username: string) => void
 }

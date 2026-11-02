@@ -65,6 +65,7 @@ export interface Booking {
   bookingMode: BookingMode | 'LEGACY'
   status: BookingStatus
   startsAt: string | null
+  preferredDate: string | null
   queueDate: string | null
   queuePosition: number | null
   notes: string | null
@@ -139,7 +140,11 @@ export async function apiRequest<T>(
   headers.set('Accept', 'application/json')
 
   if (init.body !== undefined) {
-    headers.set('Content-Type', 'application/json')
+    if (init.body instanceof FormData) {
+      headers.delete('Content-Type')
+    } else {
+      headers.set('Content-Type', 'application/json')
+    }
   }
 
   if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
@@ -161,6 +166,15 @@ export async function apiRequest<T>(
   })
 
   if (!response.ok) {
+    const checkingExpiredProtectedSession = path === '/api/auth/me'
+      && (window.location.pathname.startsWith('/owner')
+        || window.location.pathname.startsWith('/my-bookings'))
+    if (response.status === 401
+      && path !== '/api/auth/login'
+      && path !== '/api/auth/register'
+      && (path !== '/api/auth/me' || checkingExpiredProtectedSession)) {
+      window.dispatchEvent(new Event('barbershop:session-expired'))
+    }
     throw await readError(response)
   }
 

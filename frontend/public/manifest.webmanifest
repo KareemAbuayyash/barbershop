@@ -1,0 +1,20 @@
+{
+  "name": "BARBER HOUSE",
+  "short_name": "BARBER HOUSE",
+  "description": "إدارة BARBER HOUSE وحجوزات المحل",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#11110f",
+  "theme_color": "#11110f",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

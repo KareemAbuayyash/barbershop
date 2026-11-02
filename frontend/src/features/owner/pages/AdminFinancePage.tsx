@@ -2,7 +2,16 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { BarChart3, CircleDollarSign, CreditCard, Wallet } from 'lucide-react'
 import { apiRequest, getErrorMessage, type BookingPage } from '../../../lib/api'
 import { getShopDate } from '../../../lib/shop-time'
-import type { AdminCustomer, AdminDebt, AdminExpense, AdminPayment, AdminReport } from '../admin-api'
+import type {
+  AdminBestSellingProduct,
+  AdminBestSellingService,
+  AdminBookingSalesReport,
+  AdminCustomer,
+  AdminDebt,
+  AdminExpense,
+  AdminPayment,
+  AdminReport,
+} from '../admin-api'
 
 type Section = 'accounts' | 'payments' | 'debts' | 'expenses' | 'reports'
 type FinanceLoadResult =
@@ -10,7 +19,13 @@ type FinanceLoadResult =
   | { section: 'payments'; payments: AdminPayment[]; bookings: BookingPage['content']; debts: AdminDebt[] }
   | { section: 'debts'; debts: AdminDebt[] }
   | { section: 'expenses'; expenses: AdminExpense[] }
-  | { section: 'reports'; report: AdminReport }
+  | {
+      section: 'reports'
+      report: AdminReport
+      bestSellingServices: AdminBestSellingService[]
+      bestSellingProducts: AdminBestSellingProduct[]
+      bookingSales: AdminBookingSalesReport[]
+    }
 
 const methods = [
   { value: 'CASH', label: 'نقداً' },
@@ -33,10 +48,14 @@ function AdminFinancePage({ section }: { section: Section }) {
   const [payments, setPayments] = useState<AdminPayment[]>([])
   const [expenses, setExpenses] = useState<AdminExpense[]>([])
   const [report, setReport] = useState<AdminReport | null>(null)
+  const [bestSellingProducts, setBestSellingProducts] = useState<AdminBestSellingProduct[]>([])
+  const [bestSellingServices, setBestSellingServices] = useState<AdminBestSellingService[]>([])
+  const [bookingSales, setBookingSales] = useState<AdminBookingSalesReport[]>([])
   const [bookings, setBookings] = useState<BookingPage['content']>([])
   const [query, setQuery] = useState('')
   const [fromDate, setFromDate] = useState(getShopDate().slice(0, 7) + '-01')
   const [toDate, setToDate] = useState(getShopDate())
+  const [reportMonth, setReportMonth] = useState(getShopDate().slice(0, 7))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -75,7 +94,24 @@ function AdminFinancePage({ section }: { section: Section }) {
       } else if (section === 'expenses') {
         return { section, expenses: await apiRequest<AdminExpense[]>(`/api/admin/expenses?${params}`) }
       }
-      return { section: 'reports', report: await apiRequest<AdminReport>(`/api/admin/reports?${params}`) }
+      const [year, month] = reportMonth.split('-').map(Number)
+      const monthParams = new URLSearchParams({
+        fromDate: `${reportMonth}-01`,
+        toDate: new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10),
+      })
+      const [reportData, bestSellers, topServices, bookingsData] = await Promise.all([
+        apiRequest<AdminReport>(`/api/admin/reports?${monthParams}`),
+        apiRequest<AdminBestSellingProduct[]>(`/api/admin/reports/products?${monthParams}`),
+        apiRequest<AdminBestSellingService[]>(`/api/admin/reports/services?${monthParams}`),
+        apiRequest<AdminBookingSalesReport[]>(`/api/admin/reports/bookings?${monthParams}`),
+      ])
+      return {
+        section: 'reports',
+        report: reportData,
+        bestSellingProducts: bestSellers,
+        bestSellingServices: topServices,
+        bookingSales: bookingsData,
+      }
     }
 
     void fetchData().then((data) => {
@@ -93,12 +129,15 @@ function AdminFinancePage({ section }: { section: Section }) {
         setExpenses(data.expenses)
       } else {
         setReport(data.report)
+        setBestSellingProducts(data.bestSellingProducts)
+        setBestSellingServices(data.bestSellingServices)
+        setBookingSales(data.bookingSales)
       }
     }).catch((cause: unknown) => {
       if (active) setError(getErrorMessage(cause, 'تعذر تحميل البيانات المالية.'))
     })
     return () => { active = false }
-  }, [fromDate, query, refreshKey, section, toDate])
+  }, [fromDate, query, refreshKey, reportMonth, section, toDate])
 
   const submitPayment = async (event: FormEvent<HTMLFormElement>, bookingId: string, debt = false) => {
     event.preventDefault()
@@ -160,7 +199,11 @@ function AdminFinancePage({ section }: { section: Section }) {
       <section className="admin-panel">
         <div className="admin-panel-heading">
           <div><span className="admin-eyebrow">{labels[section].eyebrow}</span><h2>{labels[section].title}</h2></div>
-          {(section === 'payments' || section === 'expenses' || section === 'reports') && <div className="admin-date-range">
+          {section === 'reports' && <div className="admin-date-range">
+            <label>الشهر<input type="month" value={reportMonth}
+              onChange={(event) => setReportMonth(event.target.value || getShopDate().slice(0, 7))} /></label>
+          </div>}
+          {(section === 'payments' || section === 'expenses') && <div className="admin-date-range">
             <label>من<input type="date" value={fromDate} max={toDate}
               onClick={(event) => event.currentTarget.showPicker?.()}
               onChange={(event) => setFromDate(event.target.value)} /></label>
@@ -287,13 +330,66 @@ function AdminFinancePage({ section }: { section: Section }) {
 
         {section === 'reports' && (
           !report ? <p className="admin-state">جارٍ تحميل التقرير...</p> : (
-            <div className="admin-report-grid">
-              <article><CreditCard size={19} /><span>الإيرادات المحصلة</span><strong>{report.collectedRevenue.toLocaleString('ar')} ₪</strong></article>
-              <article><BarChart3 size={19} /><span>المصروفات</span><strong>{report.expenses.toLocaleString('ar')} ₪</strong></article>
-              <article className="admin-report-profit"><CircleDollarSign size={19} /><span>صافي التدفق</span>
-                <strong>{report.netProfit.toLocaleString('ar')} ₪</strong></article>
-              <article><Wallet size={19} /><span>ديون غير محصلة</span><strong>{report.outstandingDebt.toLocaleString('ar')} ₪</strong></article>
-              <p className="admin-report-note">الإيراد يُحتسب عند تسجيل الدفع فقط؛ الحجوزات غير المدفوعة لا تدخل في الإيرادات.</p>
+            <div className="admin-report-content">
+              <div className="admin-report-grid">
+                <article><CreditCard size={19} /><span>الإيرادات المحصلة</span><strong>{report.collectedRevenue.toLocaleString('ar')} ₪</strong></article>
+                <article><BarChart3 size={19} /><span>المصروفات</span><strong>{report.expenses.toLocaleString('ar')} ₪</strong></article>
+                <article className="admin-report-profit"><CircleDollarSign size={19} /><span>صافي التدفق</span>
+                  <strong>{report.netProfit.toLocaleString('ar')} ₪</strong></article>
+                <article><Wallet size={19} /><span>ديون غير محصلة</span><strong>{report.outstandingDebt.toLocaleString('ar')} ₪</strong></article>
+                <p className="admin-report-note">الإيراد يُحتسب عند تسجيل الدفع فقط؛ الحجوزات غير المدفوعة لا تدخل في الإيرادات.</p>
+              </div>
+              <section className="admin-report-detail">
+                <h3>الخدمات الأكثر طلباً خلال الشهر</h3>
+                {bestSellingServices.length ? bestSellingServices.map((service) => (
+                  <div className="admin-report-product-row" key={service.serviceName}>
+                    <strong>{service.serviceName}</strong>
+                    <span>عدد الحجوزات: {service.bookingCount.toLocaleString('ar')}</span>
+                    <span>قيمة الخدمات: {service.serviceRevenue.toLocaleString('ar')} ₪</span>
+                  </div>
+                )) : <p className="admin-state">لا توجد خدمات مكتملة في هذا الشهر.</p>}
+              </section>
+              <section className="admin-report-detail">
+                <h3>الأكثر مبيعاً خلال الشهر</h3>
+                {bestSellingProducts.length ? bestSellingProducts.map((product) => (
+                  <div className="admin-report-product-row" key={`${product.productName}-${product.unit}`}>
+                    <strong>{product.productName}</strong>
+                    <span>الكمية: {product.quantitySold.toLocaleString('ar')} {product.unit}</span>
+                    <span>المبيعات: {product.salesTotal.toLocaleString('ar')} ₪</span>
+                    <small>{product.bookingCount.toLocaleString('ar')} فاتورة</small>
+                  </div>
+                )) : <p className="admin-state">لا توجد منتجات مباعة في هذا الشهر.</p>}
+              </section>
+              <section className="admin-report-detail">
+                <div><h3>تفاصيل الخدمات والمنتجات المباعة</h3>
+                  <small className="admin-report-invoice-hint">آخر 500 فاتورة مكتملة خلال الشهر المحدد</small></div>
+                {bookingSales.length ? bookingSales.map((booking) => (
+                  <article className="admin-report-invoice" key={booking.bookingId}>
+                    <div className="admin-report-invoice-heading">
+                      <strong>{booking.customerName}</strong>
+                      <small>{new Date(booking.completedAt).toLocaleString('ar')}</small>
+                    </div>
+                    <div className="admin-report-product-row">
+                      <strong>{booking.serviceName}</strong>
+                      <span>الخدمة</span>
+                      <span>السعر: {booking.servicePrice.toLocaleString('ar')} ₪</span>
+                    </div>
+                    {booking.products.map((product, index) => (
+                      <div className="admin-report-product-row" key={`${product.productName}-${index}`}>
+                        <strong>{product.productName}</strong>
+                        <span>الكمية: {product.quantity.toLocaleString('ar')} {product.unit}</span>
+                        <span>سعر الوحدة: {product.unitPrice.toLocaleString('ar')} ₪</span>
+                        <small>الإجمالي: {product.lineTotal.toLocaleString('ar')} ₪</small>
+                      </div>
+                    ))}
+                    <div className="admin-report-invoice-total">
+                      <span>الإجمالي {booking.invoiceTotal.toLocaleString('ar')} ₪</span>
+                      <span>المقبوض {booking.amountPaid.toLocaleString('ar')} ₪</span>
+                      {booking.balance > 0 && <strong>المتبقي {booking.balance.toLocaleString('ar')} ₪</strong>}
+                    </div>
+                  </article>
+                )) : <p className="admin-state">لا توجد فواتير مكتملة في هذا الشهر.</p>}
+              </section>
             </div>
           )
         )}

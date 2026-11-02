@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, Package, Plus, TrendingDown, TrendingUp } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { AlertTriangle, Package, Plus, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { apiRequest, getErrorMessage } from '../../../lib/api'
 import type { AdminInventoryMovement, AdminProduct } from '../admin-api'
 
@@ -13,6 +14,7 @@ const movementNames: Record<AdminInventoryMovement['movementType'], string> = {
 function AdminInventoryPage() {
   const [products, setProducts] = useState<AdminProduct[]>([])
   const [history, setHistory] = useState<Record<string, AdminInventoryMovement[]>>({})
+  const [movementTypes, setMovementTypes] = useState<Record<string, AdminInventoryMovement['movementType']>>({})
   const [expanded, setExpanded] = useState('')
   const [editing, setEditing] = useState<AdminProduct | null>(null)
   const [error, setError] = useState('')
@@ -45,12 +47,20 @@ function AdminInventoryPage() {
     try {
       await apiRequest('/api/admin/inventory/products', {
         method: 'POST',
-        body: JSON.stringify({
-          name: String(formData.get('name')).trim(),
-          unit: String(formData.get('unit')).trim(),
-          initialQuantity: Number(formData.get('initialQuantity')),
-          lowStockThreshold: Number(formData.get('lowStockThreshold')),
-        }),
+        body: (() => {
+          const request = new FormData()
+          request.append('product', new Blob([JSON.stringify({
+            name: String(formData.get('name')).trim(),
+            unit: String(formData.get('unit')).trim(),
+            availableQuantity: Number(formData.get('availableQuantity')),
+            lowStockThreshold: Number(formData.get('lowStockThreshold')),
+            purchasePrice: Number(formData.get('purchasePrice')),
+            salePrice: Number(formData.get('salePrice')),
+          })], { type: 'application/json' }))
+          const image = formData.get('image')
+          if (image instanceof File && image.size > 0) request.append('image', image)
+          return request
+        })(),
       })
       form.reset()
       setNotice('تمت إضافة المنتج.')
@@ -77,6 +87,7 @@ function AdminInventoryPage() {
         }),
       })
       form.reset()
+      setMovementTypes((types) => ({ ...types, [product.id]: 'PURCHASE' }))
       setNotice('تم تحديث الرصيد وحفظ حركة المخزون.')
       await load()
       await loadHistory(product.id)
@@ -100,12 +111,20 @@ function AdminInventoryPage() {
     try {
       await apiRequest(`/api/admin/inventory/products/${editing.id}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          name: String(data.get('name')).trim(),
-          unit: String(data.get('unit')).trim(),
-          lowStockThreshold: Number(data.get('lowStockThreshold')),
-          active: data.get('active') === 'on',
-        }),
+        body: (() => {
+          const request = new FormData()
+          request.append('product', new Blob([JSON.stringify({
+            name: String(data.get('name')).trim(),
+            unit: String(data.get('unit')).trim(),
+            lowStockThreshold: Number(data.get('lowStockThreshold')),
+            purchasePrice: Number(data.get('purchasePrice')),
+            salePrice: Number(data.get('salePrice')),
+            active: data.get('active') === 'on',
+          })], { type: 'application/json' }))
+          const image = data.get('image')
+          if (image instanceof File && image.size > 0) request.append('image', image)
+          return request
+        })(),
       })
       setEditing(null)
       setNotice('تم تحديث بيانات المنتج.')
@@ -129,10 +148,15 @@ function AdminInventoryPage() {
               return (
                 <article className={`admin-inventory-card${low ? ' admin-inventory-card--low' : ''}`} key={product.id}>
                   <div className="admin-inventory-heading">
-                    <span className="admin-stat-icon">{low ? <AlertTriangle size={18} /> : <Package size={18} />}</span>
+                    <span className="admin-stat-icon">{product.imageUrl
+                      ? <img src={product.imageUrl} alt="" width="42" height="42" />
+                      : low ? <AlertTriangle size={18} /> : <Package size={18} />}</span>
                     <div><strong>{product.name}</strong><small>{product.active ? 'نشط' : 'موقوف'}</small></div>
                     <strong className="admin-stock-value">{product.quantity} {product.unit}</strong>
                   </div>
+                  <p className="admin-stock-threshold">
+                    شراء {product.purchasePrice.toLocaleString('ar')} ₪ · بيع {product.salePrice.toLocaleString('ar')} ₪
+                  </p>
                   <p className={low ? 'admin-low-stock' : 'admin-stock-threshold'}>
                     {low ? 'المخزون منخفض' : 'حد التنبيه'} · {product.lowStockThreshold} {product.unit}
                   </p>
@@ -148,12 +172,19 @@ function AdminInventoryPage() {
                   {expanded === product.id && (
                     <div className="admin-inventory-expanded">
                       <form className="admin-payment-form" onSubmit={(event) => void recordMovement(event, product)}>
-                        <label>نوع الحركة<select name="movementType">
+                        <label>نوع الحركة<select name="movementType" value={movementTypes[product.id] ?? 'PURCHASE'}
+                          onChange={(event) => setMovementTypes((types) => ({
+                            ...types, [product.id]: event.target.value as AdminInventoryMovement['movementType'],
+                          }))}>
                           {Object.entries(movementNames).map(([value, name]) =>
                             <option value={value} key={value}>{name}</option>)}
                         </select></label>
                         <label>الكمية<input name="quantity" type="number" min="0.001" step="0.001" required /></label>
-                        <label>تكلفة الوحدة (اختياري)<input name="unitCost" type="number" min="0" step="0.01" /></label>
+                        <label>{(movementTypes[product.id] ?? 'PURCHASE') === 'PURCHASE'
+                          ? 'تكلفة الشراء للوحدة' : 'تكلفة الوحدة (اختياري)'}
+                          <input name="unitCost" type="number" min="0" step="0.01"
+                            required={(movementTypes[product.id] ?? 'PURCHASE') === 'PURCHASE'} />
+                        </label>
                         <label>ملاحظة<input name="notes" maxLength={1000} /></label>
                         <button className="admin-primary-button" disabled={busy}>حفظ الحركة</button>
                       </form>
@@ -179,24 +210,47 @@ function AdminInventoryPage() {
         <form className="admin-form" onSubmit={(event) => void createProduct(event)}>
           <label>اسم المنتج<input name="name" maxLength={150} required /></label>
           <label>وحدة القياس<input name="unit" maxLength={30} placeholder="قطعة، عبوة، مل..." required /></label>
-          <label>الرصيد الافتتاحي<input name="initialQuantity" type="number" min="0" step="0.001" defaultValue="0" required /></label>
-          <label>حد تنبيه المخزون المنخفض<input name="lowStockThreshold" type="number" min="0" step="0.001" defaultValue="1" required /></label>
+          <label>الكمية المتوفرة<input name="availableQuantity" type="number" min="0" step="0.001" defaultValue="0" required /></label>
+          <label>سعر الشراء للوحدة (₪)<input name="purchasePrice" type="number" min="0" step="0.01" required /></label>
+          <label>سعر البيع للوحدة (₪)<input name="salePrice" type="number" min="0.01" step="0.01" required /></label>
+          <label>حد تنبيه المخزون المنخفض<input name="lowStockThreshold" type="number" min="0" step="1" defaultValue="1" required /></label>
+          <label>صورة المنتج (اختيارية)<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label>
           <button className="admin-primary-button" disabled={busy}><TrendingUp size={17} /> إضافة المنتج</button>
         </form>
-        {editing && (
-          <form className="admin-form admin-edit-product" onSubmit={(event) => void updateProduct(event)}>
-            <h3>تعديل {editing.name}</h3>
-            <label>اسم المنتج<input name="name" defaultValue={editing.name} maxLength={150} required /></label>
-            <label>الوحدة<input name="unit" defaultValue={editing.unit} maxLength={30} required /></label>
-            <label>حد تنبيه المخزون<input name="lowStockThreshold" type="number" min="0" step="0.001"
-              defaultValue={editing.lowStockThreshold} required /></label>
-            <label className="admin-checkbox"><input type="checkbox" name="active" defaultChecked={editing.active} /> المنتج نشط</label>
-            <button className="admin-primary-button" disabled={busy}>حفظ التعديل</button>
-            <button className="admin-secondary-button" type="button" onClick={() => setEditing(null)}>إلغاء</button>
-          </form>
-        )}
         <p className="admin-form-note"><TrendingDown size={15} /> كل حركة تحفظ في سجل منفصل ولا يمكن أن تجعل الرصيد سالباً.</p>
       </section>
+      {editing && createPortal(
+        <div className="admin-booking-modal-backdrop" role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null) }}>
+          <section className="admin-booking-modal admin-inventory-edit-modal" role="dialog" aria-modal="true"
+            aria-labelledby="inventory-edit-title" dir="rtl">
+            <div className="admin-booking-modal-heading">
+              <div><span className="admin-eyebrow">إدارة المخزون</span>
+                <h2 id="inventory-edit-title">تعديل {editing.name}</h2></div>
+              <button type="button" className="admin-icon-button" aria-label="إغلاق" onClick={() => setEditing(null)}>
+                <X size={17} />
+              </button>
+            </div>
+            {editing.imageUrl && <img className="admin-product-preview" src={editing.imageUrl} alt={editing.name} />}
+            <form className="admin-form" onSubmit={(event) => void updateProduct(event)}>
+              <label>اسم المنتج<input name="name" defaultValue={editing.name} maxLength={150} required /></label>
+              <label>الوحدة<input name="unit" defaultValue={editing.unit} maxLength={30} required /></label>
+              <label>الكمية المتوفرة<input value={`${editing.quantity} ${editing.unit}`} readOnly /></label>
+              <label>سعر الشراء للوحدة (₪)<input name="purchasePrice" type="number" min="0" step="0.01"
+                defaultValue={editing.purchasePrice} required /></label>
+              <label>سعر البيع للوحدة (₪)<input name="salePrice" type="number" min="0.01" step="0.01"
+                defaultValue={editing.salePrice} required /></label>
+              <label>حد تنبيه المخزون<input name="lowStockThreshold" type="number" min="0" step="1"
+                defaultValue={editing.lowStockThreshold} required /></label>
+              <label>استبدال الصورة (اختياري)<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+              <label className="admin-checkbox"><input type="checkbox" name="active" defaultChecked={editing.active} /> المنتج نشط</label>
+              <button className="admin-primary-button" disabled={busy}>حفظ التعديل</button>
+              <button className="admin-secondary-button" type="button" onClick={() => setEditing(null)}>إلغاء</button>
+            </form>
+          </section>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

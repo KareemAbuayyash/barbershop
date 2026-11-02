@@ -166,19 +166,6 @@ public class BookingManagementService {
 	}
 
 	@Transactional
-	public BookingManagementResponse complete(UUID id) {
-		Booking booking = findForLifecycleUpdate(id);
-		requireStatus(booking, BookingStatus.CONFIRMED, "Only confirmed bookings can be completed.");
-		if (booking.getStartsAt() != null && booking.getStartsAt().isAfter(Instant.now())) {
-			throw conflict(
-					"Booking has not started",
-					"A timed appointment cannot be completed before its scheduled start.");
-		}
-		booking.setStatus(BookingStatus.COMPLETED);
-		return toResponse(bookingRepository.saveAndFlush(booking));
-	}
-
-	@Transactional
 	public BookingManagementResponse updateSchedule(UUID id, BookingScheduleUpdateRequest request) {
 		Booking booking = findForLifecycleUpdate(id);
 		if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
@@ -187,7 +174,7 @@ public class BookingManagementService {
 
 		switch (booking.getBookingMode()) {
 			case EXACT_APPOINTMENT, LEGACY -> {
-				if (request.startsAt() == null || request.queueDate() != null) {
+				if (request.startsAt() == null || request.preferredDate() != null || request.queueDate() != null) {
 					throw badRequest("Invalid appointment fields", "An appointment requires a start time and no queue date.");
 				}
 				requireFutureStart(request.startsAt());
@@ -199,15 +186,27 @@ public class BookingManagementService {
 				if (request.queueDate() != null) {
 					throw badRequest("Invalid confirmation request", "Confirmation requests must not include a queue date.");
 				}
+				if (booking.getStatus() == BookingStatus.CONFIRMED && request.startsAt() == null) {
+					throw badRequest("Appointment time required", "A confirmed appointment must keep a scheduled start time.");
+				}
+				if (request.preferredDate() != null
+						&& request.preferredDate().isBefore(LocalDate.now(SHOP_ZONE))) {
+					throw badRequest("Invalid preferred date", "Preferred date must not be before the current shop-local date.");
+				}
 				if (request.startsAt() != null) {
 					requireFutureStart(request.startsAt());
 					shopScheduleService.requireAppointmentTime(
 							request.startsAt(), booking.getServiceDurationSnapshotMinutes(), booking.getId());
+					if (request.preferredDate() != null
+							&& !LocalDate.ofInstant(request.startsAt(), SHOP_ZONE).equals(request.preferredDate())) {
+						throw badRequest("Invalid preferred time", "Preferred time must fall on the selected preferred date.");
+					}
 				}
 				booking.setStartsAt(request.startsAt());
+				booking.setPreferredDate(request.preferredDate());
 			}
 			case DAY_QUEUE -> {
-				if (request.startsAt() != null || request.queueDate() == null) {
+				if (request.startsAt() != null || request.preferredDate() != null || request.queueDate() == null) {
 					throw badRequest("Invalid day queue request", "A day queue booking requires a queue date and no start time.");
 				}
 				if (request.queueDate().isBefore(LocalDate.now(SHOP_ZONE))) {
@@ -221,7 +220,7 @@ public class BookingManagementService {
 				}
 			}
 			case SAME_DAY_QUEUE -> {
-				if (request.startsAt() != null || request.queueDate() != null) {
+				if (request.startsAt() != null || request.preferredDate() != null || request.queueDate() != null) {
 					throw badRequest("Invalid same-day queue request", "Same-day queue bookings do not accept a date or time.");
 				}
 				shopScheduleService.requireOpenQueueDate(booking.getQueueDate());
@@ -351,6 +350,7 @@ public class BookingManagementService {
 				booking.getBookingMode(),
 				booking.getStatus(),
 				booking.getStartsAt(),
+				booking.getPreferredDate(),
 				booking.getQueueDate(),
 				booking.getQueuePosition(),
 				booking.getNotes(),

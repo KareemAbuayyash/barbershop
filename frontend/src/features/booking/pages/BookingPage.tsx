@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import PageIntro from '../../../components/ui/PageIntro'
 import { useAuth } from '../../auth/useAuth'
@@ -162,6 +163,9 @@ function BookingPage() {
       customerPhone: String(formData.get('customerPhone')).trim() || null,
       bookForSomeoneElse: isCustomer && bookingForSomeoneElse,
       startsAt,
+      preferredDate: selectedMode === 'CONFIRMATION_REQUEST' && preferredDateSelected
+        ? scheduleDate
+        : null,
       queueDate: selectedMode === 'DAY_QUEUE' ? scheduleDate : null,
       notes: String(formData.get('notes')).trim() || null,
     }
@@ -177,6 +181,7 @@ function BookingPage() {
         body: JSON.stringify(requestBody),
       })
       setResult(created)
+      setSelectedMode(undefined)
       idempotency.current = null
     } catch (cause) {
       setError(getErrorMessage(cause, 'تعذر إرسال الحجز. تحقق من البيانات وحاول مرة أخرى.'))
@@ -222,9 +227,20 @@ function BookingPage() {
                 setResult(null)
               }}
             />
-            {selectedMode && (
+            {selectedMode && createPortal(
+              <div className="booking-modal-backdrop" role="presentation"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setSelectedMode(undefined)
+                }}>
+              <section className="booking-modal" role="dialog" aria-modal="true"
+                aria-labelledby="booking-form-title" dir="rtl">
+              <div className="booking-modal-heading">
+                <div><span className="booking-modal-eyebrow">تم اختيار طريقة الحجز</span>
+                  <h2 id="booking-form-title">تفاصيل الحجز</h2></div>
+                <button type="button" className="booking-modal-close" aria-label="إغلاق"
+                  onClick={() => setSelectedMode(undefined)}><X size={19} /></button>
+              </div>
               <form className="booking-form site-form" onSubmit={(event) => void handleSubmit(event)}>
-                <h2>تفاصيل الحجز</h2>
                 <label htmlFor="booking-service">الخدمة</label>
                 <select id="booking-service" name="serviceId" required value={selectedServiceId}
                   onChange={(event) => {
@@ -310,6 +326,11 @@ function BookingPage() {
                         <option value={slot.startsAt} key={slot.startsAt}>{slot.localTime}</option>
                       ))}
                     </select>
+                    {!preferredDateSelected && <p className="field-help">حدد التاريخ المفضّل أولاً، ثم اختر الخدمة لعرض الأوقات الممكنة.</p>}
+                    {preferredDateSelected && !selectedServiceId
+                      && <p className="field-help">اختر الخدمة أولاً لعرض الأوقات المتاحة حسب مدة الخدمة.</p>}
+                    {preferredDateSelected && selectedServiceId && loadingAvailability
+                      && <p className="field-help" role="status">جارٍ تحميل الأوقات الممكنة...</p>}
                     <p className="field-help">سيؤكد الحلاق الموعد أو يقترح وقتاً مناسباً.</p>
                   </>
                 )}
@@ -351,15 +372,28 @@ function BookingPage() {
                   {isSubmitting ? 'جارٍ إرسال الطلب...' : 'إرسال طلب الحجز'}
                 </button>
                 {error && <p className="form-message" role="alert">{error}</p>}
-                {result && (
-                  <p className="form-message" role="status">
-                    تم استلام طلبك بنجاح. رقم الطلب: {result.bookingId.slice(0, 8)}.
-                    {result.queuePosition ? ` رقمك في القائمة: ${result.queuePosition}.` : ''}
-                  </p>
-                )}
               </form>
+              </section>
+              </div>,
+              document.body,
             )}
           </>
+        )}
+        {result && createPortal(
+          <div className="booking-modal-backdrop booking-success-backdrop" role="presentation">
+            <section className="booking-modal booking-success-modal" role="alertdialog" aria-modal="true"
+              aria-labelledby="booking-success-title" dir="rtl">
+              <button type="button" className="booking-modal-close" aria-label="إغلاق"
+                onClick={() => setResult(null)}><X size={19} /></button>
+              <span className="booking-success-mark" aria-hidden="true">✓</span>
+              <h2 id="booking-success-title">تم استلام طلبك بنجاح</h2>
+              <p>رقم الطلب: <strong dir="ltr">{result.bookingId.slice(0, 8)}</strong></p>
+              {result.queuePosition && <p>رقمك في قائمة الانتظار: <strong>{result.queuePosition}</strong></p>}
+              <button className="button button--primary form-submit" type="button"
+                onClick={() => setResult(null)}>موافق</button>
+            </section>
+          </div>,
+          document.body,
         )}
         <Link className="text-link booking-back-link" to="/">العودة إلى الرئيسية <ArrowLeft size={15} aria-hidden="true" /></Link>
       </section>

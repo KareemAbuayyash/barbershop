@@ -119,11 +119,6 @@ public class BookingController {
 		return bookingManagementService.cancel(id);
 	}
 
-	@PatchMapping("/{id}/complete")
-	public BookingManagementResponse complete(@PathVariable UUID id) {
-		return bookingManagementService.complete(id);
-	}
-
 	@PutMapping("/{id}/schedule")
 	public BookingManagementResponse updateSchedule(
 			@PathVariable UUID id,

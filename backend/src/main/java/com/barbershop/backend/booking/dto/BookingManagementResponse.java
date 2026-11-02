@@ -13,6 +13,7 @@ public record BookingManagementResponse(
 		BookingMode bookingMode,
 		BookingStatus status,
 		Instant startsAt,
+		LocalDate preferredDate,
 		LocalDate queueDate,
 		Integer queuePosition,
 		String notes,

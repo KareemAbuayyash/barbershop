@@ -6,7 +6,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -46,7 +47,16 @@ public final class AdminDtos {
 			String serviceName,
 			BigDecimal servicePrice,
 			String status,
-			Instant createdAt) {
+			Instant createdAt,
+			List<RetailItem> products) {
+	}
+
+	public record RetailItem(
+			String productName,
+			String unit,
+			BigDecimal quantity,
+			BigDecimal unitPrice,
+			BigDecimal lineTotal) {
 	}
 
 	public record Payment(
@@ -83,6 +93,19 @@ public final class AdminDtos {
 			@Size(max = 1000) String notes) {
 	}
 
+	public record CheckoutRequest(
+			@NotNull @DecimalMin(value = "0.00") BigDecimal amount,
+			@NotBlank String method,
+			@Size(max = 1000) String notes,
+			@NotNull @Size(max = 30) List<@NotNull @jakarta.validation.Valid CheckoutProduct> products) {
+	}
+
+	public record CheckoutProduct(
+			@NotNull UUID productId,
+			@NotNull @DecimalMin(value = "0.001") BigDecimal quantity,
+			@NotNull @DecimalMin(value = "0.01") BigDecimal unitPrice) {
+	}
+
 	public record Expense(
 			UUID id,
 			String category,
@@ -112,27 +135,61 @@ public final class AdminDtos {
 			BigDecimal outstandingDebt) {
 	}
 
+	public record BestSellingProduct(
+			String productName,
+			String unit,
+			BigDecimal quantitySold,
+			BigDecimal salesTotal,
+			long bookingCount) {
+	}
+
+	public record BestSellingService(String serviceName, long bookingCount, BigDecimal serviceRevenue) {
+	}
+
+	public record BookingSalesReport(
+			UUID bookingId,
+			String customerName,
+			Instant completedAt,
+			String serviceName,
+			BigDecimal servicePrice,
+			List<RetailItem> products,
+			BigDecimal invoiceTotal,
+			BigDecimal amountPaid,
+			BigDecimal balance) {
+	}
+
 	public record Product(
 			UUID id,
 			String name,
 			String unit,
 			BigDecimal quantity,
 			BigDecimal lowStockThreshold,
+			BigDecimal purchasePrice,
+			BigDecimal salePrice,
+			String imageUrl,
 			boolean active) {
 	}
 
 	public record ProductRequest(
 			@NotBlank @Size(max = 150) String name,
 			@NotBlank @Size(max = 30) String unit,
-			@NotNull @DecimalMin(value = "0.000", inclusive = true) BigDecimal initialQuantity,
-			@NotNull @DecimalMin(value = "0.000", inclusive = true) BigDecimal lowStockThreshold) {
+			@JsonAlias("initialQuantity")
+			@NotNull @DecimalMin(value = "0.000", inclusive = true) BigDecimal availableQuantity,
+			@NotNull @DecimalMin(value = "0.000", inclusive = true) BigDecimal lowStockThreshold,
+			@DecimalMin(value = "0.00", inclusive = true) BigDecimal purchasePrice,
+			@DecimalMin(value = "0.01") BigDecimal salePrice) {
 	}
 
 	public record ProductUpdateRequest(
 			@NotBlank @Size(max = 150) String name,
 			@NotBlank @Size(max = 30) String unit,
 			@NotNull @DecimalMin(value = "0.000", inclusive = true) BigDecimal lowStockThreshold,
+			@DecimalMin(value = "0.00", inclusive = true) BigDecimal purchasePrice,
+			@DecimalMin(value = "0.01") BigDecimal salePrice,
 			boolean active) {
+	}
+
+	public record ProductImage(String contentType, byte[] data) {
 	}
 
 	public record InventoryMovement(

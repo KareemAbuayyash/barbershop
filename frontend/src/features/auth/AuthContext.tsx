@@ -23,11 +23,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = useCallback(async (username: string, password: string) => {
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      clearCsrfToken()
+      setUser(null)
+    }
+    window.addEventListener('barbershop:session-expired', handleExpiredSession)
+    return () => window.removeEventListener('barbershop:session-expired', handleExpiredSession)
+  }, [])
+
+  const login = useCallback(async (username: string, password: string, rememberMe = false) => {
     await getCsrfToken()
     const authenticatedUser = await apiRequest<CurrentUser>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, rememberMe }),
     })
     await getCsrfToken()
     setUser(authenticatedUser)

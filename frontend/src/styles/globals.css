@@ -1134,6 +1134,24 @@ button {
   outline-offset: 2px;
 }
 
+.site-form .remember-me-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 3px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.site-form .remember-me-option input[type='checkbox'] {
+  flex: 0 0 18px;
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--color-gold);
+}
+
 .form-options {
   display: flex;
   justify-content: flex-start;
@@ -1233,6 +1251,64 @@ button {
   padding: clamp(20px, 4vw, 32px);
   border: 1px solid var(--color-border);
   background: var(--color-bg-soft);
+}
+
+.booking-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.booking-modal {
+  width: min(100%, 700px);
+  max-height: min(90vh, 900px);
+  overflow-y: auto;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.booking-modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.booking-modal-heading h2 {
+  margin: 5px 0 0;
+}
+
+.booking-modal-eyebrow {
+  color: var(--color-gold);
+  font-size: 11px;
+}
+
+.booking-modal-close {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.booking-modal .booking-form {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .booking-other-person {
@@ -1582,6 +1658,41 @@ button {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.booking-success-modal {
+  position: relative;
+  width: min(100%, 380px);
+  max-height: none;
+  padding: 34px 24px 24px;
+  text-align: center;
+}
+
+.booking-success-modal .booking-modal-close {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-start: 12px;
+}
+
+.booking-success-mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  margin: 0 auto 16px;
+  border: 1px solid var(--color-gold);
+  border-radius: 50%;
+  color: var(--color-gold);
+  font-size: 26px;
+}
+
+.booking-success-modal h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.booking-success-modal p {
+  color: var(--color-muted);
 }
 
 @media (max-width: 1000px) {
@@ -2441,6 +2552,15 @@ button {
   font-size: 11px;
 }
 
+.admin-booking-group-heading {
+  min-width: 870px;
+  margin: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--admin-border);
+  color: #dfc991;
+  font-size: 13px;
+}
+
 .admin-booking-row {
   padding: 13px 12px;
   border-bottom: 1px solid rgba(224, 209, 175, 0.08);
@@ -2474,6 +2594,187 @@ button {
   padding: 14px 12px 17px;
   border-top: 1px solid rgba(224, 209, 175, 0.08);
   background: rgba(195, 166, 107, 0.035);
+}
+
+.admin-booking-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.admin-booking-modal {
+  width: min(100%, 760px);
+  max-height: min(90vh, 820px);
+  overflow-y: auto;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: #191915;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.admin-booking-modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.admin-booking-modal-heading h2 {
+  margin: 6px 0 0;
+  color: #eeeae1;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.admin-booking-modal .admin-booking-edit {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.admin-booking-modal .admin-booking-edit > .admin-inline-actions,
+.admin-booking-modal .admin-booking-notes {
+  grid-column: 1 / -1;
+}
+
+.admin-booking-modal .admin-booking-confirm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.admin-booking-modal .admin-booking-confirm > .admin-form-note,
+.admin-booking-modal .admin-booking-confirm > button {
+  grid-column: 1 / -1;
+}
+
+.admin-checkout-form {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-checkout-form > label,
+.admin-checkout-product-row label {
+  display: grid;
+  gap: 7px;
+  color: #c7c1b4;
+  font-size: 11px;
+}
+
+.admin-checkout-form input,
+.admin-checkout-form select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  color: #eeeae1;
+  background: #11110f;
+  font: inherit;
+}
+
+.admin-checkout-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 9px 16px;
+  padding: 14px;
+  border: 1px solid var(--admin-border);
+  color: #c7c1b4;
+  font-size: 12px;
+}
+
+.admin-checkout-summary strong {
+  color: var(--color-gold);
+}
+
+.admin-checkout-products {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-checkout-products .admin-panel-heading {
+  margin: 0;
+}
+
+.admin-checkout-products h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.admin-checkout-product-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(80px, 0.35fr) minmax(110px, 0.45fr) auto;
+  align-items: end;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--admin-border);
+}
+
+.admin-customer-modal {
+  width: min(100%, 820px);
+}
+
+.admin-customer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.admin-customer-tabs button,
+.admin-customer-modal-actions button,
+.admin-checkout-products .admin-panel-heading button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.admin-customer-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-customer-modal-actions h3 {
+  margin: 0;
+}
+
+.admin-customer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-customer-actions .admin-secondary-button {
+  white-space: nowrap;
+}
+
+.admin-customer-report-booking {
+  border-bottom: 1px solid rgba(224, 209, 175, 0.08);
+}
+
+.admin-customer-report-booking .admin-history-row {
+  border-bottom: 0;
+}
+
+.admin-customer-purchases {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.8;
 }
 
 .admin-booking-confirm label {
@@ -2664,13 +2965,10 @@ button {
   accent-color: #c3a66b;
 }
 
-.admin-edit-product {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--admin-border);
+.admin-inventory-edit-modal {
+  width: min(100%, 560px);
 }
 
-.admin-edit-product h3,
 .admin-subheading {
   margin: 18px 0 12px;
   font-size: 14px;
@@ -2685,7 +2983,7 @@ button {
 
 .admin-customer-row {
   display: grid;
-  grid-template-columns: auto minmax(120px, 1.5fr) repeat(3, minmax(70px, 0.7fr));
+  grid-template-columns: auto minmax(120px, 1.5fr) repeat(3, minmax(70px, 0.7fr)) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -2694,7 +2992,6 @@ button {
   border-radius: 8px;
   background: transparent;
   color: inherit;
-  cursor: pointer;
   text-align: start;
 }
 
@@ -2712,6 +3009,10 @@ button {
 .admin-customer-row > span:not(.admin-customer-avatar) small {
   color: var(--color-muted);
   font-size: 10px;
+}
+
+.admin-customer-row > span {
+  min-width: 0;
 }
 
 .admin-customer-detail {
@@ -2845,6 +3146,65 @@ button {
   border-color: rgba(122, 176, 132, 0.32) !important;
 }
 
+.admin-report-content,
+.admin-report-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-report-detail {
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid var(--admin-border);
+  border-radius: 9px;
+}
+
+.admin-report-detail h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.admin-report-invoice-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.admin-report-product-row,
+.admin-report-invoice-heading,
+.admin-report-invoice-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.admin-report-product-row {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(224, 209, 175, 0.08);
+  font-size: 12px;
+}
+
+.admin-report-product-row > span,
+.admin-report-product-row > small,
+.admin-report-invoice-heading small {
+  color: var(--color-muted);
+}
+
+.admin-report-invoice {
+  padding: 14px;
+  border: 1px solid rgba(224, 209, 175, 0.1);
+  border-radius: 8px;
+}
+
+.admin-report-invoice-total {
+  padding-top: 12px;
+  color: #dfc991;
+  font-size: 12px;
+}
+
 .admin-report-note {
   grid-column: 1 / -1;
   color: var(--color-muted);
@@ -2887,6 +3247,24 @@ button {
 
 .admin-inventory-heading {
   justify-content: initial;
+}
+
+.admin-inventory-heading .admin-stat-icon img {
+  display: block;
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.admin-product-preview {
+  display: block;
+  width: min(100%, 240px);
+  max-height: 180px;
+  margin: 16px auto;
+  border: 1px solid var(--admin-border);
+  border-radius: 9px;
+  object-fit: contain;
 }
 
 .admin-inventory-heading > div {
@@ -2938,6 +3316,33 @@ button {
   padding: 15px;
   border: 1px solid var(--admin-border);
   border-radius: 9px;
+}
+
+.admin-push-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: 9px;
+  background: rgba(195, 166, 107, 0.045);
+}
+
+.admin-push-settings strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #dfc991;
+}
+
+.admin-push-settings p,
+.admin-push-settings small {
+  display: block;
+  margin: 7px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
 }
 
 .admin-notification-card:hover {
@@ -3072,6 +3477,11 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .admin-push-settings {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .admin-welcome,
   .admin-service-row {
     align-items: stretch;
@@ -3105,8 +3515,55 @@ button {
     grid-template-columns: auto 1fr 1fr;
   }
 
-  .admin-customer-row > span:nth-last-child(-n + 2) {
+  .admin-customer-row > span:nth-child(2) {
+    grid-column: 2 / -1;
+  }
+
+  .admin-customer-row > span:nth-child(3),
+  .admin-customer-row > span:nth-child(4),
+  .admin-customer-row > span:nth-child(5) {
     grid-row: 2;
+  }
+
+  .admin-customer-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .admin-checkout-product-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-checkout-product-row > label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .admin-checkout-product-row > button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .booking-modal-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .booking-success-backdrop {
+    align-items: center;
+    padding: 16px;
+  }
+
+  .booking-modal {
+    width: 100%;
+    max-height: 92vh;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .booking-modal.booking-success-modal {
+    width: min(100%, 380px);
+    max-height: none;
+    margin: auto;
+    padding: 34px 24px 24px;
   }
 
   .admin-history-row,
@@ -3142,6 +3599,82 @@ button {
 
   .admin-booking-confirm > * {
     flex: 1 1 100%;
+  }
+
+  .admin-booking-table {
+    overflow: visible;
+  }
+
+  .admin-table-head {
+    display: none;
+  }
+
+  .admin-booking-entry {
+    min-width: 0;
+    margin-bottom: 12px;
+    overflow: hidden;
+    border: 1px solid var(--admin-border);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .admin-booking-group-heading {
+    min-width: 0;
+  }
+
+  .admin-booking-row {
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 12px;
+    padding: 14px 12px;
+  }
+
+  .admin-booking-row > * {
+    min-width: 0;
+  }
+
+  .admin-booking-row > *::before {
+    display: block;
+    margin-bottom: 5px;
+    color: #898579;
+    content: attr(data-label);
+    font-size: 10px;
+  }
+
+  .admin-booking-row > [data-label='العميل'],
+  .admin-booking-row > [data-label='الإجراءات'] {
+    grid-column: 1 / -1;
+  }
+
+  .admin-booking-actions {
+    flex-wrap: wrap;
+  }
+
+  .admin-booking-actions select {
+    flex: 1 1 120px;
+    max-width: none;
+  }
+
+  .admin-booking-modal-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .admin-booking-modal {
+    width: 100%;
+    max-height: 92vh;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    border-radius: 16px 16px 0 0;
+  }
+
+  .admin-booking-modal .admin-booking-edit,
+  .admin-booking-modal .admin-booking-confirm {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-booking-modal .admin-booking-edit > *,
+  .admin-booking-modal .admin-booking-confirm > * {
+    grid-column: 1;
   }
 
   .admin-result-count {

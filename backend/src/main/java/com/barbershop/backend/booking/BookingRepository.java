@@ -39,24 +39,39 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 			          like :phonePattern)
 			  and (:filterDate = false
 			       or booking.queueDate = :date
+			       or booking.preferredDate = :date
 			       or (booking.queueDate is null
+			           and booking.preferredDate is null
 			           and booking.startsAt >= :dayStart
 			           and booking.startsAt < :nextDayStart))
 			  and (
 			      :filterFromDate = false
 			      or booking.queueDate >= :fromDate
-			      or (booking.queueDate is null and booking.startsAt >= :fromDayStart)
+			      or booking.preferredDate >= :fromDate
+			      or (booking.queueDate is null and booking.preferredDate is null
+			          and booking.startsAt >= :fromDayStart)
 			  )
 			  and (:filterToDate = false
 			       or booking.queueDate <= :toDate
-			       or (booking.queueDate is null and booking.startsAt < :dayAfterToStart))
+			       or booking.preferredDate <= :toDate
+			       or (booking.queueDate is null and booking.preferredDate is null
+			           and booking.startsAt < :dayAfterToStart))
 			order by
+			  case when booking.status = com.barbershop.backend.booking.BookingStatus.PENDING then 0
+			       when booking.status = com.barbershop.backend.booking.BookingStatus.CONFIRMED then 1
+			       when booking.status = com.barbershop.backend.booking.BookingStatus.COMPLETED then 2
+			       else 3 end,
+			  case when :filterDate = true and booking.queueDate = :date
+			       then 0 else 1 end,
 			  case when :filterDate = true and booking.queueDate = :date
 			       then booking.queuePosition else null end,
-			  case when :filterDate = true and booking.queueDate is null
-			       then booking.startsAt else null end,
-			  booking.createdAt desc,
-			  booking.id desc
+			  case when booking.queueDate is null and booking.preferredDate is null
+			            and booking.startsAt is null then 1 else 0 end,
+			  coalesce(booking.queueDate, booking.preferredDate,
+			           function('date', function('timezone', 'Asia/Hebron', booking.startsAt))) asc,
+			  booking.startsAt asc,
+			  booking.createdAt asc,
+			  booking.id asc
 			""")
 	Page<Booking> findManagementBookings(
 			@Param("filterStatus") boolean filterStatus,
