@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
-      allowedHosts: ['ultimate-pool-thickness-weddings.trycloudflare.com'],
+      allowedHosts: ['sometimes-narrow-pride-fig.trycloudflare.com'],
     },
   }
 })

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ArrowLeft, X } from 'lucide-react'
+import { ArrowLeft, BellRing, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import PageIntro from '../../../components/ui/PageIntro'
 import { useAuth } from '../../auth/useAuth'
 import BookingModeCards from '../components/BookingModeCards'
 import { apiRequest, getErrorMessage, type BookingMode, type BookingSettings, type GuestBookingResult, type Service } from '../../../lib/api'
+import { rememberGuestBookingLink } from '../../notifications/guest-booking-links'
 
 function createIdempotencyKey(): string {
   const cryptoApi = globalThis.crypto
@@ -24,6 +25,49 @@ interface BookingAvailability {
 interface CustomerProfile {
   name: string
   phoneNumber: string
+}
+
+function applicationKey(value: string) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+    .padEnd(Math.ceil(value.length / 4) * 4, '=')
+  return Uint8Array.from(window.atob(normalized), (character) => character.charCodeAt(0))
+}
+
+function subscriptionUsesApplicationKey(subscription: PushSubscription, publicKey: string) {
+  const currentKey = subscription.options.applicationServerKey
+  if (!currentKey) return false
+  const current = new Uint8Array(currentKey)
+  const expected = applicationKey(publicKey)
+  return current.length === expected.length && current.every((byte, index) => byte === expected[index])
+}
+
+async function subscribeGuestBooking(token: string) {
+  const configuration = await apiRequest<{ enabled: boolean; publicKey: string }>(
+    `/api/guest-notifications/${token}/configuration`,
+  )
+  if (!configuration.enabled || !configuration.publicKey) {
+    throw new Error('إشعارات الحجز غير مهيأة على الخادم حالياً.')
+  }
+
+  const registration = await navigator.serviceWorker.ready
+  let subscription = await registration.pushManager.getSubscription()
+  if (subscription && !subscriptionUsesApplicationKey(subscription, configuration.publicKey)) {
+    const removed = await subscription.unsubscribe()
+    if (!removed) throw new Error('تعذر تجديد اشتراك الإشعارات القديم على هذا الهاتف.')
+    subscription = null
+  }
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationKey(configuration.publicKey),
+    })
+  }
+  const keys = subscription.toJSON().keys
+  if (!keys?.p256dh || !keys.auth) throw new Error('بيانات اشتراك الهاتف غير مكتملة.')
+  await apiRequest<void>(`/api/guest-notifications/${token}/subscriptions`, {
+    method: 'POST',
+    body: JSON.stringify({ endpoint: subscription.endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } }),
+  })
 }
 
 function BookingPage() {
@@ -48,6 +92,10 @@ function BookingPage() {
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [result, setResult] = useState<GuestBookingResult | null>(null)
+  const [guestPushBusy, setGuestPushBusy] = useState(false)
+  const [guestPushEnabled, setGuestPushEnabled] = useState(false)
+  const [guestPushError, setGuestPushError] = useState('')
+  const [guestPushNotice, setGuestPushNotice] = useState('')
   const idempotency = useRef<{ fingerprint: string; key: string } | null>(null)
 
   useEffect(() => {
@@ -188,13 +236,64 @@ function BookingPage() {
         headers: { 'Idempotency-Key': idempotency.current.key },
         body: JSON.stringify(requestBody),
       })
+      if (created.guestAccessToken) {
+        rememberGuestBookingLink(created.bookingId, created.guestAccessToken)
+      }
+      setGuestPushEnabled(false)
+      setGuestPushError('')
+      setGuestPushNotice('')
       setResult(created)
+      const autoSubscribeGuest = Boolean(created.guestAccessToken)
+        && window.localStorage.getItem('barber-house-guest-push-opt-in') === 'true'
+        && 'Notification' in window && Notification.permission === 'granted'
+      if (created.guestAccessToken && autoSubscribeGuest) {
+        setGuestPushBusy(true)
+        void subscribeGuestBooking(created.guestAccessToken)
+          .then(() => {
+            setGuestPushEnabled(true)
+            setGuestPushNotice('تم ربط هذا الحجز بإشعارات هذا الهاتف تلقائياً.')
+          })
+          .catch((cause: unknown) => {
+            setGuestPushError(getErrorMessage(cause, 'تعذر ربط إشعارات هذا الحجز.'))
+          })
+          .finally(() => setGuestPushBusy(false))
+      }
       setSelectedMode(undefined)
       idempotency.current = null
     } catch (cause) {
       setError(getErrorMessage(cause, 'تعذر إرسال الحجز. تحقق من البيانات وحاول مرة أخرى.'))
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const enableGuestPush = async () => {
+    const token = result?.guestAccessToken
+    setGuestPushError('')
+    setGuestPushNotice('')
+    if (!token) return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)
+      || !('Notification' in window) || !window.isSecureContext) {
+      setGuestPushError('هذا المتصفح أو الاتصال الحالي لا يدعم إشعارات الهاتف.')
+      return
+    }
+
+    setGuestPushBusy(true)
+    try {
+      // Request permission directly from this click before any network awaits.
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission()
+      if (permission !== 'granted') throw new Error('لم تسمح بإشعارات حالة الحجز على هذا الهاتف.')
+
+      await subscribeGuestBooking(token)
+      window.localStorage.setItem('barber-house-guest-push-opt-in', 'true')
+      setGuestPushEnabled(true)
+      setGuestPushNotice('تم تفعيل إشعارات حالة الحجز على هذا الهاتف. ستصلك التحديثات حتى بعد إغلاق الموقع.')
+    } catch (cause) {
+      setGuestPushError(getErrorMessage(cause, 'تعذر تفعيل إشعارات حالة الحجز على هذا الهاتف.'))
+    } finally {
+      setGuestPushBusy(false)
     }
   }
 
@@ -397,6 +496,21 @@ function BookingPage() {
               <h2 id="booking-success-title">تم استلام طلبك بنجاح</h2>
               <p>رقم الطلب: <strong dir="ltr">{result.bookingId.slice(0, 8)}</strong></p>
               {result.queuePosition && <p>رقمك في قائمة الانتظار: <strong>{result.queuePosition}</strong></p>}
+              {result.guestAccessToken && (
+                <div className="booking-guest-notifications">
+                  <p>فعّل الإشعارات على هذا الهاتف لتصلك رسالة عند تأكيد الموعد أو تعديله.</p>
+                  <button className="button button--primary form-submit" type="button"
+                    onClick={() => void enableGuestPush()} disabled={guestPushBusy || guestPushEnabled}>
+                    <BellRing size={17} />
+                    {guestPushBusy ? 'جارٍ تفعيل الإشعارات...' : guestPushEnabled ? 'إشعارات الحجز مفعّلة' : 'تفعيل إشعارات الحجز على هذا الهاتف'}
+                  </button>
+                  {guestPushError && <p className="form-message" role="alert">{guestPushError}</p>}
+                  {guestPushNotice && <p className="field-help" role="status">{guestPushNotice}</p>}
+                  <Link className="text-link" to={`/guest-notifications/${encodeURIComponent(result.guestAccessToken)}`}>
+                    فتح مركز متابعة الحجز
+                  </Link>
+                </div>
+              )}
               <button className="button button--primary form-submit" type="button"
                 onClick={() => setResult(null)}>موافق</button>
             </section>

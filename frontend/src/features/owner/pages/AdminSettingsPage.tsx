@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Save, Settings } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { apiRequest, getErrorMessage, type BookingSettings } from '../../../lib/api'
 import { useAuth } from '../../auth/useAuth'
 import type { AdminShopProfile } from '../admin-api'
@@ -196,6 +197,9 @@ function AdminSettingsPage() {
           <h2>إعدادات المحل</h2></div><Settings size={20} /></div>
         {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
         {notice && <p className="admin-message" role="status">{notice}</p>}
+        <Link className="settings-notification-link" to="/owner/settings/notifications">
+          إعدادات الإشعارات <span>تحكم بإشعارات الحساب والأجهزة</span>
+        </Link>
         <form className="admin-settings-grid" onSubmit={(event) => void save(event)}>
           <fieldset className="admin-panel admin-settings-section">
             <legend>معلومات المحل</legend>

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.barbershop.backend.admin.NotificationService;
 import com.barbershop.backend.service.dto.ServiceRequest;
 import com.barbershop.backend.service.dto.ServiceResponse;
 
@@ -16,9 +17,11 @@ import com.barbershop.backend.service.dto.ServiceResponse;
 public class ServiceManagementService {
 
 	private final ServiceRepository serviceRepository;
+	private final NotificationService notificationService;
 
-	public ServiceManagementService(ServiceRepository serviceRepository) {
+	public ServiceManagementService(ServiceRepository serviceRepository, NotificationService notificationService) {
 		this.serviceRepository = serviceRepository;
+		this.notificationService = notificationService;
 	}
 
 	public List<ServiceResponse> findActiveServices() {
@@ -37,7 +40,8 @@ public class ServiceManagementService {
 	public int archiveAllActiveServices() {
 		List<ServiceEntity> activeServices = serviceRepository.findAllByActiveTrueOrderByNameAsc();
 		activeServices.forEach(service -> service.setActive(false));
-		serviceRepository.saveAll(activeServices);
+		serviceRepository.saveAllAndFlush(activeServices);
+		activeServices.forEach(service -> notificationService.notifyServiceChanged(service.getId(), "archived"));
 		return activeServices.size();
 	}
 
@@ -54,7 +58,9 @@ public class ServiceManagementService {
 				request.description(),
 				request.price(),
 				request.durationMinutes());
-		return toResponse(serviceRepository.save(service));
+		ServiceEntity saved = serviceRepository.saveAndFlush(service);
+		notificationService.notifyServiceChanged(saved.getId(), "created");
+		return toResponse(saved);
 	}
 
 	@Transactional
@@ -65,7 +71,9 @@ public class ServiceManagementService {
 		service.setDescription(request.description());
 		service.setPrice(request.price());
 		service.setDurationMinutes(request.durationMinutes());
-		return toResponse(serviceRepository.save(service));
+		ServiceEntity saved = serviceRepository.saveAndFlush(service);
+		notificationService.notifyServiceChanged(saved.getId(), "updated");
+		return toResponse(saved);
 	}
 
 	@Transactional
@@ -73,7 +81,9 @@ public class ServiceManagementService {
 		ServiceEntity service = serviceRepository.findById(id)
 				.orElseThrow(() -> serviceNotFound(id));
 		service.setActive(active);
-		return toResponse(serviceRepository.save(service));
+		ServiceEntity saved = serviceRepository.saveAndFlush(service);
+		notificationService.notifyServiceChanged(saved.getId(), active ? "activated" : "archived");
+		return toResponse(saved);
 	}
 
 	private static ServiceResponse toResponse(ServiceEntity service) {

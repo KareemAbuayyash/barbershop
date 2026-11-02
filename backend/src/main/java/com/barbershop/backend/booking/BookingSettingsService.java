@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.barbershop.backend.admin.NotificationService;
 import com.barbershop.backend.booking.dto.BookingSettingsRequest;
 import com.barbershop.backend.booking.dto.BookingSettingsResponse;
 
@@ -13,9 +14,11 @@ import com.barbershop.backend.booking.dto.BookingSettingsResponse;
 public class BookingSettingsService {
 
 	private final BookingSettingsRepository bookingSettingsRepository;
+	private final NotificationService notificationService;
 
-	public BookingSettingsService(BookingSettingsRepository bookingSettingsRepository) {
+	public BookingSettingsService(BookingSettingsRepository bookingSettingsRepository, NotificationService notificationService) {
 		this.bookingSettingsRepository = bookingSettingsRepository;
+		this.notificationService = notificationService;
 	}
 
 	public BookingSettingsResponse getCurrentSettings() {
@@ -30,7 +33,9 @@ public class BookingSettingsService {
 		settings.setDayQueueEnabled(request.dayQueueEnabled());
 		settings.setSameDayQueueEnabled(request.sameDayQueueEnabled());
 		settings.setNewBookingsDisabled(request.newBookingsDisabled());
-		return toResponse(bookingSettingsRepository.saveAndFlush(settings));
+		BookingSettings updated = bookingSettingsRepository.saveAndFlush(settings);
+		notificationService.notifySettingsChanged();
+		return toResponse(updated);
 	}
 
 	private BookingSettings requireCurrentSettings() {

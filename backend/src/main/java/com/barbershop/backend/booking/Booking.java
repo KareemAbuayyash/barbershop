@@ -70,6 +70,9 @@ public class Booking {
 	@Column(name = "notes", columnDefinition = "text")
 	private String notes;
 
+	@Column(name = "owner_note", columnDefinition = "text")
+	private String ownerNote;
+
 	@Column(name = "service_name_snapshot", nullable = false, length = 150)
 	private String serviceNameSnapshot;
 
@@ -198,6 +201,10 @@ public class Booking {
 		return notes;
 	}
 
+	public String getOwnerNote() {
+		return ownerNote;
+	}
+
 	public String getServiceNameSnapshot() {
 		return serviceNameSnapshot;
 	}
@@ -244,6 +251,10 @@ public class Booking {
 
 	public void setNotes(String notes) {
 		this.notes = notes;
+	}
+
+	public void setOwnerNote(String ownerNote) {
+		this.ownerNote = ownerNote;
 	}
 
 	public void setEmployeeId(UUID employeeId) {

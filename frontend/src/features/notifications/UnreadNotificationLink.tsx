@@ -7,7 +7,7 @@ interface NotificationCount {
   unreadCount: number
 }
 
-function UnreadNotificationLink({ to, label }: { to: string; label: string }) {
+function UnreadNotificationLink({ to, label, onClick }: { to: string; label: string; onClick?: () => void }) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [loadFailed, setLoadFailed] = useState(false)
 
@@ -25,27 +25,34 @@ function UnreadNotificationLink({ to, label }: { to: string; label: string }) {
       }
     }
     void loadCount()
-    const interval = window.setInterval(() => void loadCount(), 60_000)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadCount()
+    }
+    const interval = window.setInterval(refreshWhenVisible, 15_000)
     window.addEventListener('barbershop:notifications-updated', loadCount)
+    window.addEventListener('focus', loadCount)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
     return () => {
       active = false
       window.clearInterval(interval)
       window.removeEventListener('barbershop:notifications-updated', loadCount)
+      window.removeEventListener('focus', loadCount)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
   }, [])
 
   return (
-    <Link
-      className="notification-header-link"
-      to={to}
-      aria-label={`${label}${unreadCount ? `، ${unreadCount} غير مقروء` : ''}${loadFailed ? '، تعذر تحديث العدّاد' : ''}`}
-      title={loadFailed ? 'تعذر تحديث عدّاد الإشعارات' : undefined}
-    >
-      <Bell size={18} />
-      {unreadCount > 0 && <span>{unreadCount > 99 ? '99+' : unreadCount.toLocaleString('ar')}</span>}
+    <Link className="notification-header-link" to={to} onClick={() => {
+      onClick?.()
+      window.dispatchEvent(new Event('barbershop:close-site-menu'))
+      window.dispatchEvent(new Event('barbershop:close-admin-menu'))
+    }}
+      aria-label={`${label}${unreadCount ? `، ${unreadCount} غير مقروء` : ''}${loadFailed ? '، تعذر تحديث العداد' : ''}`}
+      title={loadFailed ? 'تعذر تحديث عداد الإشعارات' : undefined}>
+      <Bell size={19} aria-hidden="true" />
+      {unreadCount > 0 && <span>{unreadCount.toLocaleString('ar')}</span>}
     </Link>
   )
 }
 
 export default UnreadNotificationLink
-

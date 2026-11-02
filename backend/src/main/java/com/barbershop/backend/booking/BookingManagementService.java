@@ -17,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.barbershop.backend.admin.NotificationService;
 import com.barbershop.backend.booking.dto.BookingManagementResponse;
 import com.barbershop.backend.booking.dto.BookingPageResponse;
 import com.barbershop.backend.booking.dto.BookingScheduleUpdateRequest;
@@ -35,14 +36,17 @@ public class BookingManagementService {
 	private final BookingRepository bookingRepository;
 	private final JdbcTemplate jdbcTemplate;
 	private final ShopScheduleService shopScheduleService;
+	private final NotificationService notificationService;
 
 	public BookingManagementService(
 			BookingRepository bookingRepository,
 			JdbcTemplate jdbcTemplate,
-			ShopScheduleService shopScheduleService) {
+			ShopScheduleService shopScheduleService,
+			NotificationService notificationService) {
 		this.bookingRepository = bookingRepository;
 		this.jdbcTemplate = jdbcTemplate;
 		this.shopScheduleService = shopScheduleService;
+		this.notificationService = notificationService;
 	}
 
 	public BookingPageResponse listBookings(
@@ -152,7 +156,9 @@ public class BookingManagementService {
 		}
 
 		booking.setStatus(BookingStatus.CONFIRMED);
-		return toResponse(bookingRepository.saveAndFlush(booking));
+		Booking saved = bookingRepository.saveAndFlush(booking);
+		notificationService.notifyBookingConfirmed(saved.getId());
+		return toResponse(saved);
 	}
 
 	@Transactional
@@ -161,8 +167,15 @@ public class BookingManagementService {
 		if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
 			throw conflict("Booking cannot be cancelled", "Only pending or confirmed bookings can be cancelled.");
 		}
+		BookingStatus previousStatus = booking.getStatus();
 		booking.setStatus(BookingStatus.CANCELLED);
-		return toResponse(bookingRepository.saveAndFlush(booking));
+		Booking saved = bookingRepository.saveAndFlush(booking);
+		if (previousStatus == BookingStatus.PENDING) {
+			notificationService.notifyBookingRejected(saved.getId());
+		} else {
+			notificationService.notifyBookingCancelled(saved.getId());
+		}
+		return toResponse(saved);
 	}
 
 	@Transactional
@@ -171,6 +184,11 @@ public class BookingManagementService {
 		if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
 			throw conflict("Booking cannot be edited", "Only pending or confirmed bookings can be edited.");
 		}
+		Instant previousStartsAt = booking.getStartsAt();
+		LocalDate previousPreferredDate = booking.getPreferredDate();
+		LocalDate previousQueueDate = booking.getQueueDate();
+		Integer previousQueuePosition = booking.getQueuePosition();
+		String previousOwnerNote = booking.getOwnerNote();
 
 		switch (booking.getBookingMode()) {
 			case EXACT_APPOINTMENT, LEGACY -> {
@@ -226,8 +244,23 @@ public class BookingManagementService {
 				shopScheduleService.requireOpenQueueDate(booking.getQueueDate());
 			}
 		}
-		booking.setNotes(request.notes() == null || request.notes().isBlank() ? null : request.notes().trim());
-		return toResponse(bookingRepository.saveAndFlush(booking));
+		if (request.ownerNote() != null) {
+			String ownerNote = request.ownerNote().trim();
+			booking.setOwnerNote(ownerNote.isBlank() ? null : ownerNote);
+		}
+		Booking saved = bookingRepository.saveAndFlush(booking);
+		if (!Objects.equals(previousOwnerNote, saved.getOwnerNote()) && saved.getOwnerNote() != null) {
+			notificationService.notifyBookingNote(saved.getId(), saved.getOwnerNote());
+		}
+		if (!Objects.equals(previousStartsAt, saved.getStartsAt())
+				|| !Objects.equals(previousPreferredDate, saved.getPreferredDate())) {
+			notificationService.notifyBookingRescheduled(saved.getId());
+		}
+		if (!Objects.equals(previousQueueDate, saved.getQueueDate())
+				|| !Objects.equals(previousQueuePosition, saved.getQueuePosition())) {
+			notificationService.notifyQueueUpdated(saved.getId());
+		}
+		return toResponse(saved);
 	}
 
 	@Transactional
@@ -283,6 +316,7 @@ public class BookingManagementService {
 					Math.toIntExact(nextPosition + ordered.size() - 1L),
 					request.date());
 		}
+		ordered.forEach(booking -> notificationService.notifyQueueUpdated(booking.getId()));
 		return ordered.stream().map(BookingManagementService::toResponse).toList();
 	}
 
@@ -354,6 +388,7 @@ public class BookingManagementService {
 				booking.getQueueDate(),
 				booking.getQueuePosition(),
 				booking.getNotes(),
+				booking.getOwnerNote(),
 				booking.getService().getId(),
 				booking.getServiceNameSnapshot(),
 				booking.getServicePriceSnapshot(),

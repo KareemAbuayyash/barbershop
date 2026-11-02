@@ -344,10 +344,27 @@ class GuestBookingApiIntegrationTests {
 				"SELECT count(*) FROM bookings WHERE id = ?",
 				Integer.class,
 				bookingId(first))).isEqualTo(1);
-		assertThat(replay.getResponse().getContentAsString())
-				.isEqualTo(first.getResponse().getContentAsString());
+		String firstToken = com.jayway.jsonpath.JsonPath.read(
+				first.getResponse().getContentAsString(), "$.guestAccessToken");
+		String replayToken = com.jayway.jsonpath.JsonPath.read(
+				replay.getResponse().getContentAsString(), "$.guestAccessToken");
+		assertThat(firstToken).isNotBlank().isNotEqualTo(replayToken);
+		assertThat(replayToken).isNotBlank();
+		assertThat(jdbcTemplate.queryForList(
+				"SELECT token_hash FROM guest_booking_access WHERE booking_id = ? ORDER BY created_at",
+				String.class,
+				bookingId(first)))
+				.hasSize(2)
+				.allSatisfy(hash -> assertThat(hash).hasSize(64).isNotEqualTo(firstToken).isNotEqualTo(replayToken));
+		String replayPayload = jdbcTemplate.queryForObject(
+				"SELECT response_body::text FROM booking_idempotency WHERE idempotency_key = 'replay-key'",
+				String.class);
+		assertThat(replayPayload).doesNotContain("guestAccessToken", firstToken, replayToken);
 		assertThat(replay.getResponse().getHeader("Location"))
 				.isEqualTo(first.getResponse().getHeader("Location"));
+		mockMvc.perform(get("/api/guest-notifications/" + replayToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.content[0].eventType").value("BOOKING_CREATED"));
 
 		postBooking(
 				"replay-key",

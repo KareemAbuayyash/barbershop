@@ -44,7 +44,7 @@ class BackendApplicationTests {
 	@Test
 	void migrationCreatesTheInitialDatabaseFoundation() {
 		assertThat(flyway.info().current()).isNotNull();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("6");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
 
 		Integer createdTables = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)

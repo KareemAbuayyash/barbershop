@@ -15,6 +15,8 @@ public record CustomerBookingResponse(
 		Instant startsAt,
 		LocalDate queueDate,
 		Integer queuePosition,
+	String notes,
+	String ownerNote,
 		String serviceName,
 		BigDecimal servicePrice,
 		int serviceDurationMinutes,

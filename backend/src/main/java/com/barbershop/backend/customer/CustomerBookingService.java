@@ -33,6 +33,8 @@ public class CustomerBookingService {
 				booking.getStartsAt(),
 				booking.getQueueDate(),
 				booking.getQueuePosition(),
+				booking.getNotes(),
+				booking.getOwnerNote(),
 				booking.getServiceNameSnapshot(),
 				booking.getServicePriceSnapshot(),
 				booking.getServiceDurationSnapshotMinutes(),

@@ -16,11 +16,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import com.barbershop.backend.admin.NotificationService;
 
 import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -42,6 +44,9 @@ class AuthApiIntegrationTests {
 
 	@MockitoBean
 	private ManagementUserDetailsService managementUserDetailsService;
+
+	@MockitoBean
+	private NotificationService notificationService;
 
 	@BeforeEach
 	void configureTestOwner() {
@@ -71,7 +76,7 @@ class AuthApiIntegrationTests {
 						})
 						.header("X-CSRF-TOKEN", preLoginToken)
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"username\":\" OWNER \",\"password\":\"" + PASSWORD + "\"}"))
+						.content("{\"username\":\" OWNER \",\"password\":\"" + PASSWORD + "\",\"rememberMe\":false}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.username").value("owner"))
 				.andExpect(jsonPath("$.authorities[0]").value("ROLE_OWNER"))
@@ -114,6 +119,24 @@ class AuthApiIntegrationTests {
 		MvcResult postLoginCsrf = mockMvc.perform(get("/api/csrf").session(authenticatedSession))
 				.andExpect(status().isOk())
 				.andReturn();
+		String subscriptionToken = JsonPathSupport.token(postLoginCsrf);
+		mockMvc.perform(post("/api/notifications/subscriptions")
+						.session(authenticatedSession)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"endpoint\":\"https://fcm.googleapis.com/fcm/send/test\","
+								+ "\"keys\":{\"p256dh\":\"test-public-key\",\"auth\":\"test-auth-key\"}}"))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.detail").value("CSRF token is missing or invalid."));
+		mockMvc.perform(post("/api/notifications/subscriptions")
+						.session(authenticatedSession)
+						.header("X-CSRF-TOKEN", subscriptionToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"endpoint\":\"https://fcm.googleapis.com/fcm/send/test\","
+								+ "\"keys\":{\"p256dh\":\"test-public-key\",\"auth\":\"test-auth-key\"}}"))
+				.andExpect(status().isNoContent());
+		verify(notificationService).saveSubscription(
+				"owner", true, "https://fcm.googleapis.com/fcm/send/test", "test-public-key", "test-auth-key");
+
 		mockMvc.perform(post("/api/auth/logout")
 						.session(authenticatedSession)
 						.header("X-CSRF-TOKEN", preLoginToken))
@@ -139,7 +162,7 @@ class AuthApiIntegrationTests {
 		mockMvc.perform(post("/api/auth/login")
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"username\":\"owner\",\"password\":\"wrong-password\"}"))
+						.content("{\"username\":\"owner\",\"password\":\"wrong-password\",\"rememberMe\":false}"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.detail").value("Username or password is invalid."));
 
@@ -153,7 +176,7 @@ class AuthApiIntegrationTests {
 	void loginRequiresCsrfAndRateLimitsFailedCredentials() throws Exception {
 		mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"username\":\"owner\",\"password\":\"" + PASSWORD + "\"}"))
+						.content("{\"username\":\"owner\",\"password\":\"" + PASSWORD + "\",\"rememberMe\":false}"))
 				.andExpect(status().isForbidden());
 
 		String remoteAddress = "198.51.100.41";
@@ -165,7 +188,7 @@ class AuthApiIntegrationTests {
 								return request;
 							})
 							.contentType(MediaType.APPLICATION_JSON)
-							.content("{\"username\":\"owner\",\"password\":\"wrong-password\"}"))
+							.content("{\"username\":\"owner\",\"password\":\"wrong-password\",\"rememberMe\":false}"))
 					.andExpect(status().isUnauthorized());
 		}
 		mockMvc.perform(post("/api/auth/login")
@@ -175,7 +198,7 @@ class AuthApiIntegrationTests {
 							return request;
 						})
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"username\":\"owner\",\"password\":\"wrong-password\"}"))
+						.content("{\"username\":\"owner\",\"password\":\"wrong-password\",\"rememberMe\":false}"))
 				.andExpect(status().isTooManyRequests())
 				.andExpect(header().exists("Retry-After"));
 	}

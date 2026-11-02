@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Bell,
   CalendarDays,
@@ -67,12 +67,22 @@ const pageTitles: Record<string, string> = {
   '/owner/employees': 'الموظفون والرواتب',
   '/owner/notifications': 'الإشعارات',
   '/owner/settings': 'إعدادات المحل',
+  '/owner/settings/notifications': 'إعدادات الإشعارات',
 }
 
 function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user } = useAuth()
   const location = useLocation()
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const closeSidebar = () => setSidebarOpen(false)
+    window.addEventListener('barbershop:close-admin-menu', closeSidebar)
+    return () => window.removeEventListener('barbershop:close-admin-menu', closeSidebar)
+  }, [])
   const title = pageTitles[location.pathname] ?? 'إدارة المحل'
 
   return (
@@ -134,15 +144,15 @@ function AdminLayout() {
             className="admin-menu-toggle"
             aria-label="فتح القائمة الجانبية"
             aria-expanded={sidebarOpen}
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => {
+              window.dispatchEvent(new Event('barbershop:close-site-menu'))
+              setSidebarOpen(true)
+            }}
           ><Menu size={21} /></button>
           <div className="admin-header-title">
             <span>إدارة المحل</span>
             <h1>{title}</h1>
           </div>
-          <NavLink className="admin-header-notifications" to="/owner/notifications" aria-label="الإشعارات">
-            <Bell size={19} />
-          </NavLink>
         </header>
         <main className="admin-content"><Outlet /></main>
       </div>

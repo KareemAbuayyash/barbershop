@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -127,17 +126,17 @@ public class AdminManagementService {
 	private final JdbcTemplate jdbc;
 	private final PasswordEncoder passwordEncoder;
 	private final ShopScheduleService shopScheduleService;
-	private final ApplicationEventPublisher eventPublisher;
+	private final NotificationService notificationService;
 
 	public AdminManagementService(
 			JdbcTemplate jdbc,
 			PasswordEncoder passwordEncoder,
 			ShopScheduleService shopScheduleService,
-			ApplicationEventPublisher eventPublisher) {
+			NotificationService notificationService) {
 		this.jdbc = jdbc;
 		this.passwordEncoder = passwordEncoder;
 		this.shopScheduleService = shopScheduleService;
-		this.eventPublisher = eventPublisher;
+		this.notificationService = notificationService;
 	}
 
 	@Transactional(readOnly = true)
@@ -379,6 +378,7 @@ public class AdminManagementService {
 						VALUES (?, ?, ?, ?, ?, ?)
 						""", paymentId, bookingId, customerId, request.amount(), request.method(),
 						trimToNull(request.notes()));
+				notificationService.notifyPaymentRecorded(paymentId);
 				BigDecimal serviceBalance = serviceValue.subtract(previouslyPaid).max(BigDecimal.ZERO);
 				BigDecimal commissionableAmount = request.amount().min(serviceBalance);
 				if (employeeId != null && commissionableAmount.signum() > 0) {
@@ -463,15 +463,13 @@ public class AdminManagementService {
 					SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
 					WHERE id = ? AND quantity >= ?
 					""", item.quantity(), item.productId(), item.quantity());
-			insertMovement(item.productId(), "SALE", item.quantity(), null,
+			UUID movementId = insertMovement(item.productId(), "SALE", item.quantity(), null,
 					"Sale with booking " + bookingId, actor);
+			notificationService.notifyInventoryMovement(item.productId(), movementId, "SALE");
 			BigDecimal remainingStock = stock.subtract(item.quantity());
 			BigDecimal lowStockThreshold = (BigDecimal) product.get("low_stock_threshold");
 			if (stock.compareTo(lowStockThreshold) > 0 && remainingStock.compareTo(lowStockThreshold) <= 0) {
-				eventPublisher.publishEvent(new OwnerPushNotification(
-						"تنبيه انخفاض المخزون",
-						productName + " · المتبقي " + remainingStock + " " + product.get("unit"),
-						"/owner/inventory"));
+				notificationService.notifyInventoryThreshold(item.productId(), movementId, remainingStock.signum() == 0);
 			}
 		}
 
@@ -504,6 +502,7 @@ public class AdminManagementService {
 				}
 			}
 		}
+		notificationService.notifyCheckoutCompleted(bookingId);
 	}
 
 	@Transactional
@@ -588,12 +587,14 @@ public class AdminManagementService {
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 				""", id, request.category().trim(), request.description().trim(), request.amount(),
 				request.expenseDate(), request.method(), trimToNull(request.notes()), actor);
-		return jdbc.queryForObject("""
+		Expense expense = jdbc.queryForObject("""
 				SELECT id, category, description, amount, expense_date, method, notes, created_at
 				FROM shop_expenses WHERE id = ?
 				""", (rs, row) -> new Expense(id, rs.getString("category"), rs.getString("description"),
 				rs.getBigDecimal("amount"), rs.getObject("expense_date", LocalDate.class),
 				rs.getString("method"), rs.getString("notes"), rs.getTimestamp("created_at").toInstant()), id);
+		notificationService.notifyExpenseCreated(id);
+		return expense;
 	}
 
 	@Transactional(readOnly = true)
@@ -777,7 +778,9 @@ public class AdminManagementService {
 			insertMovement(id, "PURCHASE", request.availableQuantity(), purchasePrice, "Initial stock", actor);
 		}
 		if (image != null && !image.isEmpty()) saveProductImage(id, image);
-		return findProduct(id);
+		Product product = findProduct(id);
+		notificationService.notifyInventoryProductCreated(id);
+		return product;
 	}
 
 	@Transactional
@@ -808,19 +811,19 @@ public class AdminManagementService {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Movement would make inventory stock negative.");
 		}
 		BigDecimal newStock = currentStock.add(delta);
-		insertMovement(productId, movement.movementType(), movement.quantity(), movement.unitCost(),
+		UUID movementId = insertMovement(productId, movement.movementType(), movement.quantity(), movement.unitCost(),
 				trimToNull(movement.notes()), actor);
+		notificationService.notifyInventoryMovement(productId, movementId, movement.movementType());
 		if (currentStock.compareTo(lowStockThreshold) > 0 && newStock.compareTo(lowStockThreshold) <= 0) {
-			eventPublisher.publishEvent(new OwnerPushNotification(
-					"تنبيه انخفاض المخزون",
-					product.get("name") + " · المتبقي " + newStock + " " + product.get("unit"),
-					"/owner/inventory"));
+			notificationService.notifyInventoryThreshold(productId, movementId, newStock.signum() == 0);
 		}
 		if ("PURCHASE".equals(movement.movementType()) && movement.unitCost() != null) {
 			jdbc.update("UPDATE inventory_products SET purchase_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 					movement.unitCost(), productId);
 		}
-		return findProduct(productId);
+		Product productResult = findProduct(productId);
+		notificationService.notifyInventoryProductChanged(productId, "updated");
+		return productResult;
 	}
 
 	@Transactional
@@ -838,7 +841,9 @@ public class AdminManagementService {
 				request.purchasePrice(), request.salePrice(), request.active(), id);
 		if (updated == 0) throw notFound("Inventory product not found.");
 		if (image != null && !image.isEmpty()) saveProductImage(id, image);
-		return findProduct(id);
+		Product product = findProduct(id);
+		notificationService.notifyInventoryProductChanged(id, "updated");
+		return product;
 	}
 
 	@Transactional(readOnly = true)
@@ -904,6 +909,7 @@ public class AdminManagementService {
 		if (updatedSettings == 0) {
 			throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking settings are not initialized.");
 		}
+		notificationService.notifySettingsChanged();
 		return shopProfile();
 	}
 
@@ -941,7 +947,7 @@ public class AdminManagementService {
 					request.baseSalary(), request.commissionPercent(), request.active(), employeeId);
 			if (updated == 0) throw notFound("Employee not found.");
 		}
-		return jdbc.queryForObject("""
+		Employee employee = jdbc.queryForObject("""
 				SELECT e.id, e.name, e.phone_number, e.job_title, e.base_salary, e.commission_percent,
 				       coalesce(c.earned, 0) commission_earned, coalesce(p.paid, 0) commission_paid, e.active
 				FROM shop_employees e
@@ -953,6 +959,7 @@ public class AdminManagementService {
 				""", (rs, row) -> new Employee(employeeId, rs.getString("name"), rs.getString("phone_number"),
 				rs.getString("job_title"), rs.getBigDecimal("base_salary"), rs.getBigDecimal("commission_percent"),
 				rs.getBigDecimal("commission_earned"), rs.getBigDecimal("commission_paid"), rs.getBoolean("active")), employeeId);
+		return employee;
 	}
 
 	@Transactional(readOnly = true)
@@ -1004,11 +1011,14 @@ public class AdminManagementService {
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 				""", id, employeeId, request.amount(), request.paymentType(), request.periodStart(),
 				request.periodEnd(), trimToNull(request.notes()), actor);
-		return jdbc.queryForObject("""
+		EmployeePaymentResponse response = jdbc.queryForObject("""
 				SELECT paid_at FROM employee_payments WHERE id = ?
 				""", (rs, row) -> new EmployeePaymentResponse(id, employeeId, employeeName, request.amount(),
 				request.paymentType(), request.periodStart(), request.periodEnd(),
 				trimToNull(request.notes()), rs.getTimestamp("paid_at").toInstant()), id);
+		notificationService.notifyOwner("FINANCE", "employee-payment:" + id,
+				"تم تسجيل دفعة لموظف", employeeName + " · " + request.amount() + " ₪", "/owner/employees");
+		return response;
 	}
 
 	public record DebtResponse(
@@ -1080,17 +1090,19 @@ public class AdminManagementService {
 		return null;
 	}
 
-	private void insertMovement(
+	private UUID insertMovement(
 			UUID productId,
 			String type,
 			BigDecimal quantity,
 			BigDecimal unitCost,
 			String notes,
 			String actor) {
+		UUID id = UUID.randomUUID();
 		jdbc.update("""
-				INSERT INTO inventory_movements (product_id, movement_type, quantity, unit_cost, notes, created_by)
-				VALUES (?, ?, ?, ?, ?, ?)
-				""", productId, type, quantity, unitCost, notes, actor);
+				INSERT INTO inventory_movements (id, product_id, movement_type, quantity, unit_cost, notes, created_by)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				""", id, productId, type, quantity, unitCost, notes, actor);
+		return id;
 	}
 
 	private long scalarLong(String sql, Object... args) {

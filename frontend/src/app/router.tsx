@@ -14,9 +14,13 @@ import AdminServicesPage from '../features/owner/pages/AdminServicesPage'
 import AdminFinancePage from '../features/owner/pages/AdminFinancePage'
 import AdminInventoryPage from '../features/owner/pages/AdminInventoryPage'
 import AdminEmployeesPage from '../features/owner/pages/AdminEmployeesPage'
-import AdminNotificationsPage from '../features/owner/pages/AdminNotificationsPage'
+import NotificationCenterPage from '../features/notifications/NotificationCenterPage'
+import CustomerNotificationsPage from '../features/notifications/CustomerNotificationsPage'
+import NotificationSettingsPage from '../features/notifications/NotificationSettingsPage'
+import GuestNotificationPage from '../features/notifications/GuestNotificationPage'
 import AdminSettingsPage from '../features/owner/pages/AdminSettingsPage'
 import MyBookingsPage from '../features/customer/pages/MyBookingsPage'
+import CustomerSettingsPage from '../features/customer/pages/CustomerSettingsPage'
 import CustomerRoute from '../features/customer/components/CustomerRoute'
 import HomePage from '../features/home/pages/HomePage'
 import NotFoundPage from '../features/home/pages/NotFoundPage'
@@ -30,6 +34,8 @@ export const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: 'services', element: <ServicesPage /> },
       { path: 'booking', element: <BookingPage /> },
+      { path: 'guest-notifications', element: <GuestNotificationPage /> },
+      { path: 'guest-notifications/:token', element: <GuestNotificationPage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'register', element: <Navigate to="/login" replace /> },
       {
@@ -48,11 +54,15 @@ export const router = createBrowserRouter([
           { path: 'reports', element: <AdminFinancePage section="reports" /> },
           { path: 'inventory', element: <AdminInventoryPage /> },
           { path: 'employees', element: <AdminEmployeesPage /> },
-          { path: 'notifications', element: <AdminNotificationsPage /> },
+          { path: 'notifications', element: <NotificationCenterPage /> },
           { path: 'settings', element: <AdminSettingsPage /> },
+          { path: 'settings/notifications', element: <NotificationSettingsPage /> },
         ],
       },
       { path: 'my-bookings', element: <CustomerRoute><MyBookingsPage /></CustomerRoute> },
+      { path: 'my-notifications', element: <CustomerRoute><CustomerNotificationsPage /></CustomerRoute> },
+      { path: 'my-settings', element: <CustomerRoute><CustomerSettingsPage /></CustomerRoute> },
+      { path: 'my-settings/notifications', element: <CustomerRoute><NotificationSettingsPage /></CustomerRoute> },
       { path: 'about', element: <AboutPage /> },
       { path: 'contact', element: <ContactPage /> },
       { path: '*', element: <NotFoundPage /> },

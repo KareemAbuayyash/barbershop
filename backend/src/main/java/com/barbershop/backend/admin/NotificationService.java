@@ -1,19 +1,27 @@
 package com.barbershop.backend.admin;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.Security;
-import java.time.Duration;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import nl.martijndwars.webpush.Notification;
 import nl.martijndwars.webpush.PushService;
+import nl.martijndwars.webpush.Utils;
 import org.apache.http.HttpResponse;
+import org.apache.http.util.EntityUtils;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,13 +45,23 @@ public class NotificationService {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(NotificationService.class);
 	private static final List<String> EVENT_TYPES = List.of(
-			"BOOKING",
-			"BOOKING_UPDATE",
+			"BOOKING_CREATED",
+			"BOOKING_CONFIRMED",
+			"BOOKING_REJECTED",
+			"BOOKING_CANCELLED",
+			"BOOKING_RESCHEDULED",
+			"BOOKING_PROPOSAL",
+			"BOOKING_PROPOSAL_RESPONSE",
+			"BOOKING_NOTE",
 			"BOOKING_REMINDER",
 			"QUEUE",
 			"INVENTORY",
+			"INVENTORY_LOW",
+			"INVENTORY_OUT",
 			"SALES",
 			"PAYMENT",
+			"PAYMENT_SETTLED",
+			"PAYMENT_DUE",
 			"FINANCE",
 			"SERVICE",
 			"SETTINGS",
@@ -54,12 +72,21 @@ public class NotificationService {
 			"push.services.mozilla.com",
 			"web.push.apple.com");
 	private static final int MAX_DELIVERY_ATTEMPTS = 8;
+	private static final int GUEST_ACCESS_TOKEN_BYTES = 32;
+	private static final int GUEST_ACCESS_TOKEN_DAYS = 30;
+	private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+	private static final Set<String> CUSTOMER_PREFERENCE_TYPES = Set.of(
+			"BOOKING_CREATED", "BOOKING_CONFIRMED", "BOOKING_REJECTED", "BOOKING_CANCELLED",
+			"BOOKING_RESCHEDULED", "BOOKING_PROPOSAL", "BOOKING_PROPOSAL_RESPONSE", "BOOKING_NOTE", "BOOKING_REMINDER",
+			"QUEUE", "PAYMENT_SETTLED", "PAYMENT_DUE");
+	private static final Set<String> OWNER_PREFERENCE_TYPES = Set.copyOf(EVENT_TYPES);
 
 	private final JdbcTemplate jdbc;
 	private final ObjectMapper objectMapper;
 	private final String publicKey;
 	private final String privateKey;
 	private final String subject;
+	private final boolean pushConfigured;
 
 	public NotificationService(
 			JdbcTemplate jdbc,
@@ -75,11 +102,31 @@ public class NotificationService {
 		if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
 			Security.addProvider(new BouncyCastleProvider());
 		}
+		boolean validVapidKeys = !this.publicKey.isBlank() && !this.privateKey.isBlank();
+		if (validVapidKeys) {
+			try {
+				validVapidKeys = Utils.verifyKeyPair(
+						Utils.loadPrivateKey(this.privateKey), Utils.loadPublicKey(this.publicKey));
+			} catch (Exception exception) {
+				validVapidKeys = false;
+				LOGGER.error("Web Push VAPID keys could not be loaded.", exception);
+			}
+			if (!validVapidKeys) {
+				LOGGER.error("Web Push is disabled because the VAPID public and private keys do not match.");
+			}
+		}
+		this.pushConfigured = validVapidKeys;
+		if (this.publicKey.isBlank() || this.privateKey.isBlank()) {
+			LOGGER.warn("Web Push is disabled because BARBERSHOP_PUSH_VAPID_PUBLIC_KEY and BARBERSHOP_PUSH_VAPID_PRIVATE_KEY are not configured.");
+		} else if (!this.pushConfigured) {
+			LOGGER.warn("Web Push is disabled because the configured VAPID key pair is invalid.");
+		} else {
+			LOGGER.info("Web Push is enabled; pending notifications will be delivered by the scheduler.");
+		}
 	}
 
 	public Map<String, Object> publicConfiguration() {
-		boolean enabled = !publicKey.isBlank() && !privateKey.isBlank();
-		return Map.of("enabled", enabled, "publicKey", enabled ? publicKey : "");
+		return Map.of("enabled", pushConfigured, "publicKey", pushConfigured ? publicKey : "");
 	}
 
 	@Transactional
@@ -87,15 +134,69 @@ public class NotificationService {
 		List<UUID> accountIds = jdbc.query("""
 				SELECT id FROM management_accounts WHERE role = 'ROLE_OWNER' AND enabled = TRUE
 				""", (rs, row) -> rs.getObject("id", UUID.class));
+		String ownerTitle = "BOOKING_CREATED".equals(eventType) ? "حجز جديد" : title;
 		for (UUID accountId : accountIds) {
-			createNotification(new Recipient("OWNER", accountId), eventType, eventKey, title, body, path);
+			createNotification(new Recipient("OWNER", accountId), eventType, eventKey, ownerTitle, body, path);
 		}
 	}
 
 	@Transactional
 	public void notifyCustomer(UUID accountId, String eventType, String eventKey, String title, String body, String path) {
 		if (accountId == null) return;
-		createNotification(new Recipient("CUSTOMER", accountId), eventType, eventKey, title, body, path);
+		String customerTitle = "BOOKING_CREATED".equals(eventType) ? "تم استلام طلب حجزك" : title;
+		createNotification(new Recipient("CUSTOMER", accountId), eventType, eventKey, customerTitle, body, path);
+	}
+
+	@Transactional
+	public void notifyGuest(UUID bookingId, String eventType, String eventKey, String title, String body) {
+		if (bookingId == null) return;
+		String guestTitle = "BOOKING_CREATED".equals(eventType) ? "تم استلام طلب حجزك" : title;
+		createGuestNotification(bookingId, eventType, eventKey, guestTitle, body, "/guest-notifications");
+	}
+
+	@Transactional
+	public void notifyBookingNote(UUID bookingId, String note) {
+		if (bookingId == null || note == null || note.isBlank()) return;
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":owner-note:" + booking.updatedAt().toEpochMilli();
+		notifyBookingCustomerOrGuest(booking, "BOOKING_NOTE", eventKey,
+				"ملاحظة من المحل", note, "/my-bookings");
+	}
+
+	private void notifyBookingCustomerOrGuest(
+			BookingNotificationDetails booking,
+			String eventType,
+			String eventKey,
+			String title,
+			String body,
+			String customerPath) {
+		if (booking.customerAccountId() == null) {
+			notifyGuest(booking.id(), eventType, eventKey, title, body);
+		} else {
+			notifyCustomer(booking.customerAccountId(), eventType, eventKey, title, body, customerPath);
+		}
+	}
+
+	@Transactional
+	public String issueGuestAccessToken(UUID bookingId) {
+		byte[] tokenBytes = new byte[GUEST_ACCESS_TOKEN_BYTES];
+		SECURE_RANDOM.nextBytes(tokenBytes);
+		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
+		String tokenHash = hashGuestAccessToken(token);
+		jdbc.update("""
+				INSERT INTO guest_booking_access (booking_id, token_hash, expires_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP + (? * INTERVAL '1 day'))
+				""", bookingId, tokenHash, GUEST_ACCESS_TOKEN_DAYS);
+		return token;
+	}
+
+	@Transactional(readOnly = true)
+	public boolean isGuestBooking(UUID bookingId) {
+		if (bookingId == null) return false;
+		return Boolean.TRUE.equals(jdbc.queryForObject(
+				"SELECT EXISTS (SELECT 1 FROM bookings WHERE id = ? AND customer_account_id IS NULL)",
+				Boolean.class, bookingId));
 	}
 
 	@Transactional
@@ -113,6 +214,374 @@ public class NotificationService {
 		for (UUID accountId : accounts) {
 			notifyCustomer(accountId, eventType, eventKey, title, body, path);
 		}
+	}
+
+	public void notifyBookingCreated(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":created";
+		String appointment = formatBookingTime(booking);
+		notifyOwner("BOOKING_CREATED", eventKey, "طلب حجز جديد",
+				booking.customerName() + " · " + booking.serviceName() + " · " + appointment
+						+ customerNoteSummary(booking.customerNote()),
+				"/owner/bookings");
+		notifyBookingCustomerOrGuest(booking, "BOOKING_CREATED", eventKey,
+				"تم استلام طلب حجزك",
+				"رقم الحجز: " + booking.id() + " · " + booking.serviceName() + " · " + appointment,
+				"/my-bookings");
+	}
+
+	private String customerNoteSummary(String note) {
+		if (note == null || note.isBlank()) return "";
+		String summary = note.trim();
+		if (summary.length() > 160) summary = summary.substring(0, 157) + "…";
+		return " · ملاحظة الزبون: " + summary;
+	}
+
+	public void notifyBookingConfirmed(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":confirmed";
+		String body = booking.serviceName() + " · " + formatBookingTime(booking);
+		notifyOwner("BOOKING_CONFIRMED", eventKey, "تم تأكيد الحجز",
+				booking.customerName() + " · " + body, "/owner/bookings");
+		notifyBookingCustomerOrGuest(booking, "BOOKING_CONFIRMED", eventKey,
+				"تم تأكيد حجزك", body, "/my-bookings");
+	}
+
+	public void notifyBookingRejected(UUID bookingId) {
+		notifyBookingLifecycle(bookingId, "BOOKING_REJECTED", "تم رفض الحجز",
+				"تم رفض طلب الحجز.", ":rejected");
+	}
+
+	public void notifyBookingCancelled(UUID bookingId) {
+		notifyBookingLifecycle(bookingId, "BOOKING_CANCELLED", "تم إلغاء الحجز",
+				"تم إلغاء الحجز.", ":cancelled");
+	}
+
+	public void notifyBookingRescheduled(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":rescheduled:" + booking.updatedAt().toEpochMilli();
+		String body = booking.serviceName() + " · " + formatBookingTime(booking);
+		notifyOwner("BOOKING_RESCHEDULED", eventKey, "تم تعديل موعد الحجز",
+				booking.customerName() + " · " + body, "/owner/bookings");
+		notifyBookingCustomerOrGuest(booking, "BOOKING_RESCHEDULED", eventKey,
+				"تم تعديل موعد حجزك", body, "/my-bookings");
+	}
+
+	public void notifyBookingProposal(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":proposal:" + booking.updatedAt().toEpochMilli();
+		notifyBookingCustomerOrGuest(booking, "BOOKING_PROPOSAL", eventKey,
+				"يوجد موعد مقترح لحجزك",
+				booking.serviceName() + " · " + formatBookingTime(booking) + " · يرجى قبول الموعد أو رفضه.",
+				"/my-bookings");
+	}
+
+	public void notifyBookingProposalResponse(UUID bookingId, boolean accepted) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":proposal-response:" + booking.updatedAt().toEpochMilli();
+		String title = accepted ? "وافق الزبون على الموعد المقترح" : "رفض الزبون الموعد المقترح";
+		String body = booking.customerName() + " · " + booking.serviceName() + " · " + formatBookingTime(booking);
+		notifyOwner("BOOKING_PROPOSAL_RESPONSE", eventKey, title, body, "/owner/bookings");
+		notifyBookingCustomerOrGuest(booking, "BOOKING_PROPOSAL_RESPONSE", eventKey,
+				accepted ? "تم تثبيت موعدك" : "تم رفض الموعد المقترح",
+				accepted ? "تم تثبيت الموعد المقترح." : "تم رفض الموعد المقترح ويمكن للمالك اقتراح موعد آخر.",
+				"/my-bookings");
+	}
+
+	public void notifyQueueUpdated(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":queue:" + booking.updatedAt().toEpochMilli();
+		String body = booking.serviceName() + " · الدور " + booking.queuePosition() + " · " + formatBookingTime(booking);
+		notifyOwner("QUEUE", eventKey, "تم تحديث قائمة الانتظار",
+				booking.customerName() + " · " + body, "/owner/queue");
+		notifyBookingCustomerOrGuest(booking, "QUEUE", eventKey,
+				"تم تحديث دورك في الطابور", body, "/my-bookings");
+	}
+
+	public void notifyQueueApproaching(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null || booking.queuePosition() == null) return;
+		String eventKey = "booking:" + booking.id() + ":queue-approaching:" + booking.queuePosition();
+		String body = booking.serviceName() + " · الدور " + booking.queuePosition();
+		notifyOwner("QUEUE", eventKey, "اقترب موعد أحد الحجوزات",
+				booking.customerName() + " · " + body, "/owner/queue");
+		notifyBookingCustomerOrGuest(booking, "QUEUE", eventKey,
+				"اقترب دورك في الطابور", body + " · يرجى الاستعداد للحضور.", "/my-bookings");
+	}
+
+	public void notifyPaymentRecorded(UUID paymentId) {
+		PaymentNotificationDetails payment = findPaymentNotification(paymentId);
+		if (payment == null) return;
+		String eventKey = "payment:" + payment.id();
+		String body = payment.customerName() + " · " + payment.amount().toPlainString() + " ₪ · المتبقي "
+				+ payment.balance().toPlainString() + " ₪";
+		notifyOwner("PAYMENT", eventKey, "تم تسجيل دفعة مالية", body, "/owner/payments");
+		String customerEvent = payment.balance().signum() == 0 ? "PAYMENT_SETTLED" : "PAYMENT_DUE";
+		String customerTitle = payment.balance().signum() == 0 ? "تم تسديد الفاتورة بالكامل" : "تم تسجيل دفعتك";
+		String customerBody = "الخدمة: " + payment.serviceName() + " · المتبقي " + payment.balance().toPlainString() + " ₪";
+		if (payment.customerAccountId() == null) {
+			notifyGuest(payment.bookingId(), customerEvent, eventKey, customerTitle, customerBody);
+		} else {
+			notifyCustomer(payment.customerAccountId(), customerEvent, eventKey, customerTitle, customerBody, "/my-bookings");
+		}
+	}
+
+	public void notifyCheckoutCompleted(UUID bookingId) {
+		InvoiceNotificationDetails invoice = findInvoiceNotification(bookingId);
+		if (invoice == null) return;
+		String eventKey = "invoice:" + bookingId + ":created";
+		String body = invoice.customerName() + " · الإجمالي " + invoice.total().toPlainString()
+				+ " ₪ · المدفوع " + invoice.paid().toPlainString() + " ₪";
+		notifyOwner("SALES", eventKey, "تم إنشاء فاتورة جديدة", body, "/owner/reports");
+		String customerEvent = invoice.balance().signum() == 0 ? "PAYMENT_SETTLED" : "PAYMENT_DUE";
+		String customerTitle = invoice.balance().signum() == 0 ? "تم تسديد فاتورتك بالكامل" : "تم إنشاء فاتورتك";
+		String customerBody = "الإجمالي " + invoice.total().toPlainString() + " ₪ · المتبقي " + invoice.balance().toPlainString() + " ₪";
+		if (invoice.customerAccountId() == null) {
+			notifyGuest(bookingId, customerEvent, eventKey, customerTitle, customerBody);
+		} else {
+			notifyCustomer(invoice.customerAccountId(), customerEvent, eventKey, customerTitle, customerBody, "/my-bookings");
+		}
+	}
+
+	public void notifyExpenseCreated(UUID expenseId) {
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT category, description, amount FROM shop_expenses WHERE id = ?
+				""", expenseId);
+		if (rows.isEmpty()) return;
+		Map<String, Object> expense = rows.get(0);
+		notifyOwner("FINANCE", "expense:" + expenseId, "تم تسجيل مصروف جديد",
+				String.valueOf(expense.get("category")) + " · " + String.valueOf(expense.get("amount")) + " ₪ · "
+						+ String.valueOf(expense.get("description")), "/owner/expenses");
+	}
+
+	public void notifyInventoryProductCreated(UUID productId) {
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT name, quantity, unit FROM inventory_products WHERE id = ?
+				""", productId);
+		if (rows.isEmpty()) return;
+		Map<String, Object> product = rows.get(0);
+		notifyOwner("INVENTORY", "inventory-product:" + productId + ":created", "تمت إضافة منتج للمخزون",
+				String.valueOf(product.get("name")) + " · الكمية " + String.valueOf(product.get("quantity")) + " "
+						+ product.get("unit"), "/owner/inventory");
+	}
+
+	public void notifyInventoryProductChanged(UUID productId, String action) {
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT name, quantity, unit FROM inventory_products WHERE id = ?
+				""", productId);
+		if (rows.isEmpty()) return;
+		Map<String, Object> product = rows.get(0);
+		notifyOwner("INVENTORY", "inventory-product:" + productId + ":" + action + ":" + Instant.now().toEpochMilli(),
+				"تم تحديث منتج في المخزون",
+				String.valueOf(product.get("name")) + " · الكمية " + product.get("quantity") + " "
+						+ product.get("unit") + " · " + action,
+				"/owner/inventory");
+	}
+
+	public void notifyInventoryMovement(UUID productId, UUID movementId, String movementType) {
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT p.name, p.quantity, p.unit, m.quantity movement_quantity
+				FROM inventory_products p JOIN inventory_movements m ON m.product_id = p.id
+				WHERE p.id = ? AND m.id = ?
+				""", productId, movementId);
+		if (rows.isEmpty()) return;
+		Map<String, Object> movement = rows.get(0);
+		String eventType = "SALE".equals(movementType) ? "SALES" : "INVENTORY";
+		String title = "SALE".equals(movementType) ? "تم تسجيل عملية بيع" : "تم تحديث كمية المخزون";
+		notifyOwner(eventType, "inventory-movement:" + movementId, title,
+				String.valueOf(movement.get("name")) + " · الكمية " + movement.get("movement_quantity")
+						+ " · المتبقي " + movement.get("quantity") + " " + movement.get("unit"),
+				"/owner/inventory");
+	}
+
+	public void notifyInventoryThreshold(UUID productId, UUID movementId, boolean outOfStock) {
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT name, quantity, unit FROM inventory_products WHERE id = ?
+				""", productId);
+		if (rows.isEmpty()) return;
+		Map<String, Object> product = rows.get(0);
+		String eventType = outOfStock ? "INVENTORY_OUT" : "INVENTORY_LOW";
+		notifyOwner(eventType, "inventory-threshold:" + productId + ":" + movementId,
+				outOfStock ? "نفد المنتج من المخزون" : "انخفاض مخزون المنتج",
+				String.valueOf(product.get("name")) + " · المتبقي " + product.get("quantity") + " "
+						+ product.get("unit"), "/owner/inventory");
+	}
+
+	public void notifyServiceChanged(UUID serviceId, String action) {
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT name, price FROM services WHERE id = ?
+				""", serviceId);
+		if (rows.isEmpty()) return;
+		Map<String, Object> service = rows.get(0);
+		notifyOwner("SERVICE", "service:" + serviceId + ":" + action + ":" + Instant.now().toEpochMilli(),
+				"تم تحديث الخدمات والأسعار",
+				String.valueOf(service.get("name")) + " · السعر " + service.get("price") + " ₪ · " + action,
+				"/owner/services");
+	}
+
+	public void notifySettingsChanged() {
+		notifyOwner("SETTINGS", "settings:" + Instant.now().toEpochMilli(), "تم تحديث إعدادات المحل",
+				"تم تحديث إعدادات الحجوزات أو بيانات المحل.", "/owner/settings");
+	}
+
+	private void notifyBookingLifecycle(
+			UUID bookingId,
+			String eventType,
+			String title,
+			String customerBody,
+			String keySuffix) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + keySuffix + ":" + booking.updatedAt().toEpochMilli();
+		String body = booking.customerName() + " · " + booking.serviceName();
+		notifyOwner(eventType, eventKey, title, body, "/owner/bookings");
+		String customerTitle = switch (eventType) {
+			case "BOOKING_REJECTED" -> "تم رفض طلب حجزك";
+			case "BOOKING_CANCELLED" -> "تم إلغاء حجزك";
+			default -> title;
+		};
+		notifyBookingCustomerOrGuest(booking, eventType, eventKey, customerTitle, customerBody, "/my-bookings");
+	}
+
+	private BookingNotificationDetails findBookingNotification(UUID bookingId) {
+		return jdbc.query("""
+				SELECT b.id, b.customer_account_id, b.notes,
+				       coalesce(c.name, account.display_name, 'عميل') AS customer_name,
+				       b.service_name_snapshot, b.starts_at, b.preferred_date,
+				       b.queue_date, b.queue_position, b.updated_at
+				FROM bookings b
+				LEFT JOIN customers c ON c.id = b.customer_id
+				LEFT JOIN customer_accounts account ON account.id = b.customer_account_id
+				WHERE b.id = ?
+				""", (rs, row) -> new BookingNotificationDetails(
+				rs.getObject("id", UUID.class),
+				rs.getObject("customer_account_id", UUID.class),
+					rs.getString("notes"),
+				rs.getString("customer_name"),
+				rs.getString("service_name_snapshot"),
+				rs.getTimestamp("starts_at") == null ? null : rs.getTimestamp("starts_at").toInstant(),
+				rs.getObject("preferred_date", LocalDate.class),
+				rs.getObject("queue_date", LocalDate.class),
+				rs.getObject("queue_position", Integer.class),
+				rs.getTimestamp("updated_at").toInstant()), bookingId)
+			.stream()
+			.findFirst()
+			.orElse(null);
+	}
+
+	private PaymentNotificationDetails findPaymentNotification(UUID paymentId) {
+		return jdbc.query("""
+				SELECT p.id, p.amount, b.id AS booking_id, b.customer_account_id,
+				       coalesce(c.name, account.display_name, 'عميل') AS customer_name,
+				       b.service_name_snapshot,
+				       greatest(
+				           b.service_price_snapshot + coalesce(ri.retail_total, 0)
+				           - coalesce((SELECT sum(amount) FROM booking_payments WHERE booking_id = b.id), 0),
+				           0) AS balance
+				FROM booking_payments p
+				JOIN bookings b ON b.id = p.booking_id
+				LEFT JOIN customers c ON c.id = b.customer_id
+				LEFT JOIN customer_accounts account ON account.id = b.customer_account_id
+				LEFT JOIN (
+				    SELECT booking_id, sum(line_total) retail_total
+				    FROM booking_retail_items GROUP BY booking_id
+				) ri ON ri.booking_id = b.id
+				WHERE p.id = ?
+				""", (rs, row) -> new PaymentNotificationDetails(
+				rs.getObject("id", UUID.class),
+				rs.getBigDecimal("amount"),
+				rs.getObject("booking_id", UUID.class),
+				rs.getObject("customer_account_id", UUID.class),
+				rs.getString("customer_name"),
+				rs.getString("service_name_snapshot"),
+				rs.getBigDecimal("balance")), paymentId)
+			.stream()
+			.findFirst()
+			.orElse(null);
+	}
+
+	private InvoiceNotificationDetails findInvoiceNotification(UUID bookingId) {
+		return jdbc.query("""
+				SELECT b.customer_account_id,
+				       coalesce(c.name, account.display_name, 'عميل') AS customer_name,
+				       b.service_price_snapshot + coalesce(ri.retail_total, 0) AS total,
+				       coalesce(p.paid, 0) AS paid,
+				       greatest(
+				           b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0),
+				           0) AS balance
+				FROM bookings b
+				LEFT JOIN customers c ON c.id = b.customer_id
+				LEFT JOIN customer_accounts account ON account.id = b.customer_account_id
+				LEFT JOIN (
+				    SELECT booking_id, sum(line_total) retail_total
+				    FROM booking_retail_items GROUP BY booking_id
+				) ri ON ri.booking_id = b.id
+				LEFT JOIN (
+				    SELECT booking_id, sum(amount) paid
+				    FROM booking_payments GROUP BY booking_id
+				) p ON p.booking_id = b.id
+				WHERE b.id = ?
+				""", (rs, row) -> new InvoiceNotificationDetails(
+				rs.getObject("customer_account_id", UUID.class),
+				rs.getString("customer_name"),
+				rs.getBigDecimal("total"),
+				rs.getBigDecimal("paid"),
+				rs.getBigDecimal("balance")), bookingId)
+			.stream()
+			.findFirst()
+			.orElse(null);
+	}
+
+	private String formatBookingTime(BookingNotificationDetails booking) {
+		if (booking.queueDate() != null) {
+			return "الدور " + booking.queuePosition() + " بتاريخ " + booking.queueDate();
+		}
+		if (booking.startsAt() != null) {
+			return DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+					.format(booking.startsAt().atZone(java.time.ZoneId.of("Asia/Hebron")));
+		}
+		if (booking.preferredDate() != null) {
+			return "التاريخ المقترح " + booking.preferredDate();
+		}
+		return "بانتظار تحديد الموعد";
+	}
+
+	private void createGuestNotification(
+			UUID bookingId,
+			String eventType,
+			String eventKey,
+			String title,
+			String body,
+			String path) {
+		if (!EVENT_TYPES.contains(eventType)) {
+			throw new IllegalArgumentException("Unsupported notification event type.");
+		}
+		if (eventKey == null || eventKey.isBlank() || eventKey.length() > 180) {
+			throw new IllegalArgumentException("Notification event key must contain 1-180 characters.");
+		}
+		UUID notificationId = UUID.randomUUID();
+		int inserted = jdbc.update("""
+				INSERT INTO app_notifications (
+				    id, recipient_type, owner_account_id, customer_account_id, guest_booking_id,
+				    event_type, event_key, title, body, target_path
+				)
+				VALUES (?, 'GUEST', NULL, NULL, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT DO NOTHING
+				""", notificationId, bookingId, eventType, eventKey, limited(title, 150), limited(body, 500), normalizePath(path));
+		if (inserted == 0) return;
+		jdbc.update("""
+				INSERT INTO notification_push_deliveries (id, notification_id, subscription_id)
+				SELECT gen_random_uuid(), ?, subscription.id
+				FROM notification_subscriptions subscription
+				WHERE subscription.guest_booking_id = ? AND subscription.enabled = TRUE
+				ON CONFLICT (notification_id, subscription_id) DO NOTHING
+				""", notificationId, bookingId);
 	}
 
 	private void createNotification(
@@ -134,10 +603,10 @@ public class NotificationService {
 		UUID notificationId = UUID.randomUUID();
 		int inserted = jdbc.update("""
 				INSERT INTO app_notifications (
-				    id, recipient_type, owner_account_id, customer_account_id,
+				    id, recipient_type, owner_account_id, customer_account_id, guest_booking_id,
 				    event_type, event_key, title, body, target_path
 				)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
 				ON CONFLICT DO NOTHING
 				""", notificationId, recipient.type(),
 				recipient.type().equals("OWNER") ? recipient.id() : null,
@@ -219,7 +688,7 @@ public class NotificationService {
 	public NotificationPreferences preferences(String username, boolean owner) {
 		Recipient recipient = resolveRecipient(username, owner);
 		Map<String, Boolean> preferences = new LinkedHashMap<>();
-		EVENT_TYPES.forEach(type -> preferences.put(type, Boolean.TRUE));
+		preferenceTypes(owner).forEach(type -> preferences.put(type, Boolean.TRUE));
 		String predicate = owner ? "owner_account_id = ?" : "customer_account_id = ?";
 		jdbc.query("""
 				SELECT event_type, push_enabled FROM notification_preferences WHERE %s
@@ -240,7 +709,7 @@ public class NotificationService {
 		}
 		Recipient recipient = resolveRecipient(username, owner);
 		for (Map.Entry<String, Boolean> preference : request.preferences().entrySet()) {
-			if (!EVENT_TYPES.contains(preference.getKey()) || preference.getValue() == null) {
+			if (!preferenceTypes(owner).contains(preference.getKey()) || preference.getValue() == null) {
 				throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid notification preference.");
 			}
 			if (owner) {
@@ -266,24 +735,30 @@ public class NotificationService {
 	public void saveSubscription(String username, boolean owner, String endpoint, String p256dh, String auth) {
 		validateEndpointAndKeys(endpoint, p256dh, auth);
 		Recipient recipient = resolveRecipient(username, owner);
-		UUID subscriptionId = UUID.randomUUID();
-		jdbc.update("""
-				INSERT INTO notification_subscriptions (
-				    id, endpoint, p256dh_key, auth_key, owner_account_id, customer_account_id, enabled
-				)
-				VALUES (?, ?, ?, ?, ?, ?, TRUE)
-				ON CONFLICT (endpoint) DO NOTHING
-				""", subscriptionId, endpoint, p256dh, auth,
-				owner ? recipient.id() : null, owner ? null : recipient.id());
-		int updated = jdbc.update("""
-				UPDATE notification_subscriptions
-				SET p256dh_key = ?, auth_key = ?, enabled = TRUE, updated_at = CURRENT_TIMESTAMP
-				WHERE endpoint = ?
-				  AND ((? = TRUE AND owner_account_id = ?)
-				       OR (? = FALSE AND customer_account_id = ?))
-				""", p256dh, auth, endpoint, owner, recipient.id(), owner, recipient.id());
-		if (updated == 0) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT, "This push subscription belongs to another account.");
+		if (owner) {
+			jdbc.update("""
+					INSERT INTO notification_subscriptions (
+					    id, endpoint, p256dh_key, auth_key, owner_account_id, enabled
+					)
+					VALUES (?, ?, ?, ?, ?, TRUE)
+					ON CONFLICT (owner_account_id, endpoint) WHERE owner_account_id IS NOT NULL
+					DO UPDATE SET p256dh_key = EXCLUDED.p256dh_key,
+					              auth_key = EXCLUDED.auth_key,
+					              enabled = TRUE,
+					              updated_at = CURRENT_TIMESTAMP
+					""", UUID.randomUUID(), endpoint, p256dh, auth, recipient.id());
+		} else {
+			jdbc.update("""
+					INSERT INTO notification_subscriptions (
+					    id, endpoint, p256dh_key, auth_key, customer_account_id, enabled
+					)
+					VALUES (?, ?, ?, ?, ?, TRUE)
+					ON CONFLICT (customer_account_id, endpoint) WHERE customer_account_id IS NOT NULL
+					DO UPDATE SET p256dh_key = EXCLUDED.p256dh_key,
+					              auth_key = EXCLUDED.auth_key,
+					              enabled = TRUE,
+					              updated_at = CURRENT_TIMESTAMP
+					""", UUID.randomUUID(), endpoint, p256dh, auth, recipient.id());
 		}
 	}
 
@@ -300,6 +775,17 @@ public class NotificationService {
 		if (updated == 0) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Push subscription not found for this account.");
 		}
+	}
+
+	@Transactional
+	public void removeDeviceSubscription(String endpoint) {
+		validateEndpoint(endpoint);
+		// Logout removes account subscriptions from this browser, while preserving
+		// guest booking subscriptions attached to the same browser endpoint.
+		jdbc.update("""
+				DELETE FROM notification_subscriptions
+				WHERE endpoint = ? AND (owner_account_id IS NOT NULL OR customer_account_id IS NOT NULL)
+				""", endpoint);
 	}
 
 	@Transactional
@@ -323,8 +809,10 @@ public class NotificationService {
 					FROM notification_subscriptions subscription
 					WHERE delivery.subscription_id = subscription.id
 					  AND subscription.endpoint = ?
+					  AND ((? = TRUE AND subscription.owner_account_id = ?)
+					       OR (? = FALSE AND subscription.customer_account_id = ?))
 					  AND delivery.delivered_at IS NULL
-					""", endpoint);
+					""", endpoint, owner, recipient.id(), owner, recipient.id());
 		}
 	}
 
@@ -344,6 +832,166 @@ public class NotificationService {
 		return enabled;
 	}
 
+	@Transactional(readOnly = true)
+	public Map<String, Object> guestConfiguration(String token) {
+		UUID bookingId = resolveGuestBooking(token);
+		Map<String, Object> configuration = new LinkedHashMap<>(publicConfiguration());
+		configuration.put("bookingId", bookingId.toString());
+		return configuration;
+	}
+
+	@Transactional(readOnly = true)
+	public NotificationCenter listGuestNotifications(String token, int page, int requestedSize) {
+		UUID bookingId = resolveGuestBooking(token);
+		int safePage = Math.max(page, 0);
+		int size = Math.max(1, Math.min(requestedSize, 50));
+		long total = jdbc.queryForObject(
+				"SELECT count(*) FROM app_notifications WHERE recipient_type = 'GUEST' AND guest_booking_id = ?",
+				Long.class, bookingId);
+		long unread = jdbc.queryForObject(
+				"SELECT count(*) FROM app_notifications WHERE recipient_type = 'GUEST' AND guest_booking_id = ? AND read_at IS NULL",
+				Long.class, bookingId);
+		List<NotificationItem> content = jdbc.query("""
+				SELECT id, event_type, title, body, target_path, created_at, read_at
+				FROM app_notifications
+				WHERE recipient_type = 'GUEST' AND guest_booking_id = ?
+				ORDER BY created_at DESC, id DESC
+				OFFSET ? LIMIT ?
+				""", (rs, row) -> new NotificationItem(
+				rs.getObject("id", UUID.class),
+				rs.getString("event_type"),
+				rs.getString("title"),
+				rs.getString("body"),
+				rs.getString("target_path"),
+				rs.getTimestamp("created_at").toInstant(),
+				rs.getTimestamp("read_at") == null ? null : rs.getTimestamp("read_at").toInstant()),
+				bookingId, (long) safePage * size, size);
+		return new NotificationCenter(content, unread, safePage, size, total,
+				(int) Math.ceil((double) total / size));
+	}
+
+	@Transactional
+	public void markGuestRead(String token, UUID notificationId) {
+		UUID bookingId = resolveGuestBooking(token);
+		int updated = jdbc.update("""
+				UPDATE app_notifications SET read_at = coalesce(read_at, CURRENT_TIMESTAMP)
+				WHERE id = ? AND recipient_type = 'GUEST' AND guest_booking_id = ?
+				""", notificationId, bookingId);
+		if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found.");
+	}
+
+	@Transactional
+	public void markAllGuestRead(String token) {
+		UUID bookingId = resolveGuestBooking(token);
+		jdbc.update("""
+				UPDATE app_notifications SET read_at = CURRENT_TIMESTAMP
+				WHERE recipient_type = 'GUEST' AND guest_booking_id = ? AND read_at IS NULL
+				""", bookingId);
+	}
+
+	@Transactional
+	public void saveGuestSubscription(String token, String endpoint, String p256dh, String auth) {
+		validateEndpointAndKeys(endpoint, p256dh, auth);
+		UUID bookingId = resolveGuestBooking(token);
+		jdbc.update("""
+				INSERT INTO notification_subscriptions (
+				    id, endpoint, p256dh_key, auth_key, guest_booking_id, enabled
+				)
+				VALUES (?, ?, ?, ?, ?, TRUE)
+				ON CONFLICT (guest_booking_id, endpoint) WHERE guest_booking_id IS NOT NULL
+				DO UPDATE SET
+				    p256dh_key = EXCLUDED.p256dh_key,
+				    auth_key = EXCLUDED.auth_key,
+				    enabled = TRUE,
+				    updated_at = CURRENT_TIMESTAMP
+				""", UUID.randomUUID(), endpoint, p256dh, auth, bookingId);
+		queueExistingGuestNotifications(bookingId, endpoint);
+	}
+
+	@Transactional
+	public void removeGuestSubscription(String token, String endpoint) {
+		validateEndpoint(endpoint);
+		UUID bookingId = resolveGuestBooking(token);
+		int updated = jdbc.update("""
+				DELETE FROM notification_subscriptions
+				WHERE endpoint = ? AND guest_booking_id = ?
+				""", endpoint, bookingId);
+		if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Push subscription not found.");
+	}
+
+	@Transactional
+	public void setGuestSubscriptionEnabled(String token, String endpoint, boolean enabled) {
+		validateEndpoint(endpoint);
+		UUID bookingId = resolveGuestBooking(token);
+		int updated = jdbc.update("""
+				UPDATE notification_subscriptions
+				SET enabled = ?, updated_at = CURRENT_TIMESTAMP
+				WHERE endpoint = ? AND guest_booking_id = ?
+				""", enabled, endpoint, bookingId);
+		if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Push subscription not found.");
+		if (!enabled) {
+			jdbc.update("""
+					UPDATE notification_push_deliveries delivery
+					SET delivered_at = CURRENT_TIMESTAMP, claimed_until = NULL
+					FROM notification_subscriptions subscription
+					WHERE delivery.subscription_id = subscription.id
+					  AND subscription.endpoint = ?
+					  AND subscription.guest_booking_id = ?
+					  AND delivery.delivered_at IS NULL
+					""", endpoint, bookingId);
+		}
+	}
+
+	@Transactional(readOnly = true)
+	public boolean guestSubscriptionEnabled(String token, String endpoint) {
+		validateEndpoint(endpoint);
+		UUID bookingId = resolveGuestBooking(token);
+		return jdbc.query("""
+				SELECT enabled FROM notification_subscriptions
+				WHERE endpoint = ? AND guest_booking_id = ?
+				""", (rs, row) -> rs.getBoolean("enabled"), endpoint, bookingId)
+				.stream().findFirst().orElse(false);
+	}
+
+	private void queueExistingGuestNotifications(UUID bookingId, String endpoint) {
+		jdbc.update("""
+				INSERT INTO notification_push_deliveries (id, notification_id, subscription_id)
+				SELECT gen_random_uuid(), notification.id, subscription.id
+				FROM app_notifications notification
+				JOIN notification_subscriptions subscription
+				  ON subscription.guest_booking_id = notification.guest_booking_id
+				WHERE notification.recipient_type = 'GUEST'
+				  AND notification.guest_booking_id = ?
+				  AND subscription.endpoint = ?
+				  AND subscription.enabled = TRUE
+				ON CONFLICT (notification_id, subscription_id) DO NOTHING
+				""", bookingId, endpoint);
+	}
+
+	private UUID resolveGuestBooking(String token) {
+		if (token == null || !token.matches("[A-Za-z0-9_-]{40,100}")) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Guest booking access token is invalid.");
+		}
+		UUID bookingId = jdbc.query("""
+				SELECT booking_id FROM guest_booking_access
+				WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
+				""", (rs, row) -> rs.getObject("booking_id", UUID.class), hashGuestAccessToken(token))
+				.stream().findFirst().orElse(null);
+		if (bookingId == null) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Guest booking access token is expired or invalid.");
+		}
+		return bookingId;
+	}
+
+	private String hashGuestAccessToken(String token) {
+		try {
+			byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+			return java.util.HexFormat.of().formatHex(digest);
+		} catch (java.security.NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("SHA-256 is unavailable.", exception);
+		}
+	}
+
 	@Scheduled(cron = "0 0 * * * *", zone = "Asia/Hebron")
 	@Transactional
 	public void notifyUpcomingBookings() {
@@ -353,7 +1001,6 @@ public class NotificationService {
 				FROM bookings booking
 				JOIN customers customer ON customer.id = booking.customer_id
 				WHERE booking.status = 'CONFIRMED'
-				  AND booking.customer_account_id IS NOT NULL
 				  AND booking.starts_at >= CURRENT_TIMESTAMP
 				  AND booking.starts_at < CURRENT_TIMESTAMP + INTERVAL '24 hours'
 				ORDER BY booking.starts_at
@@ -395,10 +1042,38 @@ public class NotificationService {
 				"/owner/reports");
 	}
 
-	@Scheduled(fixedDelay = 30_000)
+	@Scheduled(fixedDelay = 60_000)
+	@Transactional
+	public void notifyApproachingQueue() {
+		List<UUID> bookingIds = jdbc.query("""
+				SELECT id FROM bookings
+				WHERE status IN ('PENDING', 'CONFIRMED')
+				  AND queue_date = CURRENT_DATE
+				  AND queue_position <= 2
+				""", (rs, row) -> rs.getObject("id", UUID.class));
+		bookingIds.forEach(this::notifyQueueApproaching);
+	}
+
+	@Scheduled(cron = "0 20 3 * * *", zone = "Asia/Hebron")
+	@Transactional
+	public void cleanupNotificationData() {
+		jdbc.update("DELETE FROM app_notifications WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '180 days'");
+		jdbc.update("DELETE FROM guest_booking_access WHERE expires_at < CURRENT_TIMESTAMP");
+		jdbc.update("""
+				DELETE FROM notification_subscriptions
+				WHERE enabled = FALSE
+				  AND updated_at < CURRENT_TIMESTAMP - INTERVAL '90 days'
+				""");
+	}
+
+	@Scheduled(fixedDelay = 5_000)
 	public void deliverPendingPushNotifications() {
-		if (publicKey.isBlank() || privateKey.isBlank()) return;
-		for (Delivery delivery : claimDueDeliveries()) {
+		if (!pushConfigured) return;
+		List<Delivery> pending = claimDueDeliveries();
+		if (!pending.isEmpty()) {
+			LOGGER.info("Delivering {} pending Web Push notification(s).", pending.size());
+		}
+		for (Delivery delivery : pending) {
 			deliver(delivery);
 		}
 	}
@@ -424,7 +1099,8 @@ public class NotificationService {
 					""", id);
 			if (updated == 0) continue;
 			List<Delivery> rows = jdbc.query("""
-					SELECT delivery.id, delivery.attempts, notification.title, notification.body,
+					SELECT delivery.id, delivery.notification_id, notification.guest_booking_id,
+					       delivery.attempts, notification.title, notification.body,
 					       notification.target_path, subscription.endpoint,
 					       subscription.p256dh_key, subscription.auth_key
 					FROM notification_push_deliveries delivery
@@ -433,6 +1109,8 @@ public class NotificationService {
 					WHERE delivery.id = ? AND subscription.enabled = TRUE
 					""", (rs, row) -> new Delivery(
 					rs.getObject("id", UUID.class),
+					rs.getObject("notification_id", UUID.class),
+					rs.getObject("guest_booking_id", UUID.class),
 					rs.getInt("attempts"),
 					rs.getString("title"),
 					rs.getString("body"),
@@ -451,25 +1129,62 @@ public class NotificationService {
 
 	private void deliver(Delivery delivery) {
 		try {
-			String payload = objectMapper.writeValueAsString(Map.of(
-					"title", delivery.title(),
-					"body", delivery.body(),
-					"path", delivery.targetPath()));
+			Map<String, Object> payloadData = new LinkedHashMap<>();
+			payloadData.put("id", delivery.notificationId().toString());
+			payloadData.put("title", delivery.title());
+			payloadData.put("body", delivery.body());
+			payloadData.put("path", delivery.targetPath());
+			if (delivery.guestBookingId() != null) {
+				payloadData.put("guestBookingId", delivery.guestBookingId().toString());
+			}
+			String payload = objectMapper.writeValueAsString(payloadData);
 			PushService pushService = new PushService(publicKey, privateKey, subject);
 			HttpResponse response = pushService.send(new Notification(
 					delivery.endpoint(), delivery.p256dh(), delivery.auth(),
 					payload.getBytes(StandardCharsets.UTF_8), 3600));
 			int status = response.getStatusLine().getStatusCode();
+			String responseDetail = "";
+			if (status < 200 || status >= 300) {
+				try {
+					responseDetail = response.getEntity() == null
+							? ""
+							: EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+					if (responseDetail.length() > 300) responseDetail = responseDetail.substring(0, 300);
+				} catch (Exception ignored) {
+					responseDetail = "unreadable response body";
+				}
+			}
 			if (status >= 200 && status < 300) {
 				jdbc.update("""
 						UPDATE notification_push_deliveries
 						SET delivered_at = CURRENT_TIMESTAMP, claimed_until = NULL, last_error = NULL
 						WHERE id = ?
 						""", delivery.id());
+				LOGGER.info("Web Push notification {} accepted by {}.", delivery.notificationId(),
+						URI.create(delivery.endpoint()).getHost());
+			} else if (status == 403 && isVapidSubscriptionMismatch(responseDetail)) {
+				jdbc.update("""
+						UPDATE notification_subscriptions
+						SET enabled = FALSE, updated_at = CURRENT_TIMESTAMP
+						WHERE endpoint = ?
+						""", delivery.endpoint());
+				jdbc.update("""
+						UPDATE notification_push_deliveries delivery
+						SET delivered_at = CURRENT_TIMESTAMP, claimed_until = NULL, last_error = 'VAPID_MISMATCH'
+						FROM notification_subscriptions subscription
+						WHERE delivery.subscription_id = subscription.id
+						  AND subscription.endpoint = ?
+						  AND delivery.delivered_at IS NULL
+						""", delivery.endpoint());
+				LOGGER.warn("Disabled a Web Push subscription that was created with different VAPID credentials.");
 			} else if (status == 404 || status == 410) {
 				jdbc.update("DELETE FROM notification_subscriptions WHERE endpoint = ?", delivery.endpoint());
+				LOGGER.warn("Web Push subscription for notification {} was rejected and removed (HTTP {}): {}.",
+						delivery.notificationId(), status, responseDetail);
 			} else {
 				retry(delivery, "HTTP_" + status);
+				LOGGER.warn("Web Push notification {} returned HTTP {} from {}: {}.", delivery.notificationId(), status,
+						URI.create(delivery.endpoint()).getHost(), responseDetail);
 			}
 		} catch (Exception exception) {
 			String error = exception instanceof JacksonException
@@ -499,6 +1214,12 @@ public class NotificationService {
 				""", delaySeconds, error, delivery.id());
 	}
 
+	private static boolean isVapidSubscriptionMismatch(String responseDetail) {
+		String normalized = responseDetail.toLowerCase(Locale.ROOT);
+		return normalized.contains("vapid credentials")
+				&& normalized.contains("do not correspond to the credentials used to create the subscription");
+	}
+
 	private Recipient resolveRecipient(String username, boolean owner) {
 		String table = owner ? "management_accounts" : "customer_accounts";
 		String roleClause = owner ? " AND role = 'ROLE_OWNER'" : "";
@@ -509,6 +1230,10 @@ public class NotificationService {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Notification account is unavailable.");
 		}
 		return new Recipient(owner ? "OWNER" : "CUSTOMER", ids.get(0));
+	}
+
+	private Set<String> preferenceTypes(boolean owner) {
+		return owner ? OWNER_PREFERENCE_TYPES : CUSTOMER_PREFERENCE_TYPES;
 	}
 
 	private void validateEndpointAndKeys(String endpoint, String p256dh, String auth) {
@@ -558,8 +1283,41 @@ public class NotificationService {
 	private record Recipient(String type, UUID id) {
 	}
 
+	private record BookingNotificationDetails(
+			UUID id,
+			UUID customerAccountId,
+			String customerNote,
+			String customerName,
+			String serviceName,
+			Instant startsAt,
+			LocalDate preferredDate,
+			LocalDate queueDate,
+			Integer queuePosition,
+			Instant updatedAt) {
+	}
+
+	private record PaymentNotificationDetails(
+			UUID id,
+			BigDecimal amount,
+			UUID bookingId,
+			UUID customerAccountId,
+			String customerName,
+			String serviceName,
+			BigDecimal balance) {
+	}
+
+	private record InvoiceNotificationDetails(
+			UUID customerAccountId,
+			String customerName,
+			BigDecimal total,
+			BigDecimal paid,
+			BigDecimal balance) {
+	}
+
 	private record Delivery(
 			UUID id,
+			UUID notificationId,
+			UUID guestBookingId,
 			int attempts,
 			String title,
 			String body,

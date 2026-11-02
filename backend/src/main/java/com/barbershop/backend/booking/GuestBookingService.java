@@ -13,11 +13,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.context.ApplicationEventPublisher;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
-import com.barbershop.backend.admin.OwnerPushNotification;
+import com.barbershop.backend.admin.NotificationService;
 import com.barbershop.backend.booking.dto.GuestBookingRequest;
 import com.barbershop.backend.booking.dto.GuestBookingResponse;
 import com.barbershop.backend.customer.CustomerEntity;
@@ -45,7 +44,7 @@ public class GuestBookingService {
 	private final ObjectMapper objectMapper;
 	private final RateLimitService rateLimitService;
 	private final ShopScheduleService shopScheduleService;
-	private final ApplicationEventPublisher eventPublisher;
+	private final NotificationService notificationService;
 
 	public GuestBookingService(
 			BookingRepository bookingRepository,
@@ -57,7 +56,7 @@ public class GuestBookingService {
 			ObjectMapper objectMapper,
 			RateLimitService rateLimitService,
 			ShopScheduleService shopScheduleService,
-			ApplicationEventPublisher eventPublisher) {
+			NotificationService notificationService) {
 		this.bookingRepository = bookingRepository;
 		this.bookingSettingsRepository = bookingSettingsRepository;
 		this.customerRepository = customerRepository;
@@ -67,7 +66,7 @@ public class GuestBookingService {
 		this.objectMapper = objectMapper;
 		this.rateLimitService = rateLimitService;
 		this.shopScheduleService = shopScheduleService;
-		this.eventPublisher = eventPublisher;
+		this.notificationService = notificationService;
 	}
 
 	@Transactional
@@ -126,6 +125,9 @@ public class GuestBookingService {
 				validated.queueDate(),
 				queuePosition,
 				validated.notes()));
+		String guestAccessToken = customerAccount == null
+				? notificationService.issueGuestAccessToken(booking.getId())
+				: null;
 
 		GuestBookingResponse response = new GuestBookingResponse(
 				booking.getId(),
@@ -134,13 +136,11 @@ public class GuestBookingService {
 				booking.getStartsAt(),
 				booking.getQueueDate(),
 				booking.getQueuePosition(),
-				booking.getCreatedAt());
+				booking.getCreatedAt(),
+				guestAccessToken);
 		String location = "/api/bookings/" + booking.getId();
 		updateIdempotencyResponse(validated.idempotencyKey(), booking.getId(), response, location);
-		eventPublisher.publishEvent(new OwnerPushNotification(
-				"طلب حجز جديد",
-				validated.customerName() + " · " + service.getName(),
-				"/owner/bookings"));
+		notificationService.notifyBookingCreated(booking.getId());
 		return new BookingCreationResult(201, location, response);
 	}
 
@@ -271,9 +271,21 @@ public class GuestBookingService {
 		}
 
 		try {
-			GuestBookingResponse response = objectMapper.readValue(
+			GuestBookingResponse storedResponse = objectMapper.readValue(
 					(String) stored.get("response_body"),
 					GuestBookingResponse.class);
+			String guestAccessToken = notificationService.isGuestBooking(storedResponse.bookingId())
+					? notificationService.issueGuestAccessToken(storedResponse.bookingId())
+					: null;
+			GuestBookingResponse response = new GuestBookingResponse(
+					storedResponse.bookingId(),
+					storedResponse.bookingMode(),
+					storedResponse.status(),
+					storedResponse.startsAt(),
+					storedResponse.queueDate(),
+					storedResponse.queuePosition(),
+					storedResponse.createdAt(),
+					guestAccessToken);
 			return new BookingCreationResult(
 					((Number) stored.get("response_status")).intValue(),
 					(String) stored.get("response_location"),
@@ -289,7 +301,9 @@ public class GuestBookingService {
 			GuestBookingResponse response,
 			String location) {
 		try {
-			String body = objectMapper.writeValueAsString(response);
+			String body = objectMapper.writeValueAsString(new BookingReplayResponse(
+					response.bookingId(), response.bookingMode(), response.status(), response.startsAt(),
+					response.queueDate(), response.queuePosition(), response.createdAt()));
 			jdbcTemplate.update("""
 					UPDATE booking_idempotency
 					SET response_body = ?::jsonb,
@@ -306,6 +320,16 @@ public class GuestBookingService {
 		} catch (JacksonException exception) {
 			throw new IllegalStateException("Booking response could not be serialized for idempotent replay.", exception);
 		}
+	}
+
+	private record BookingReplayResponse(
+			UUID bookingId,
+			BookingMode bookingMode,
+			BookingStatus status,
+			Instant startsAt,
+			LocalDate queueDate,
+			Integer queuePosition,
+			Instant createdAt) {
 	}
 
 	private Integer allocateQueuePosition(LocalDate queueDate) {

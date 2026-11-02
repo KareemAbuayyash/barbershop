@@ -154,6 +154,22 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   }, [appliedRange, fromDate, page, preset, query, queueOnly, status, toDate, refreshKey])
 
   useEffect(() => {
+    const refreshBookings = () => {
+      setLoading(true)
+      setRefreshKey((value) => value + 1)
+    }
+    const onServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'barbershop:notification-received') refreshBookings()
+    }
+    window.addEventListener('focus', refreshBookings)
+    navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage)
+    return () => {
+      window.removeEventListener('focus', refreshBookings)
+      navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
+    }
+  }, [])
+
+  useEffect(() => {
     const activeBookingId = confirmingBookingId || editingBookingId
     const booking = result?.content.find(({ id }) => id === activeBookingId)
     if (!activeBookingId || !booking || !booking.serviceId
@@ -299,7 +315,7 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
           startsAt: startInput || null,
           preferredDate: booking.bookingMode === 'CONFIRMATION_REQUEST' ? appointmentDate : null,
           queueDate: String(data.get('queueDate') ?? '') || null,
-          notes: String(data.get('notes') ?? '').trim() || null,
+          ownerNote: String(data.get('ownerNote') ?? '').trim(),
         }),
       })
       setEditingBookingId('')
@@ -527,6 +543,12 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                       )}
                   </div>
                 </article>
+                {(booking.notes || booking.ownerNote) && (
+                  <div className="admin-booking-notes-summary">
+                    {booking.notes && <p><strong>ملاحظة الزبون:</strong> {booking.notes}</p>}
+                    {booking.ownerNote && <p><strong>ملاحظة من المحل:</strong> {booking.ownerNote}</p>}
+                  </div>
+                )}
                 </div>
                 {editingBookingId === booking.id && createPortal(
                   <div className="admin-booking-modal-backdrop" role="presentation"
@@ -585,8 +607,11 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                     {booking.bookingMode === 'SAME_DAY_QUEUE' && (
                       <p className="admin-form-note">هذا حجز لقائمة اليوم؛ يمكن تعديل الملاحظات فقط.</p>
                     )}
-                    <label className="admin-booking-notes">ملاحظات
-                      <input name="notes" maxLength={1000} defaultValue={booking.notes ?? ''} />
+                    {booking.notes && <p className="admin-form-note admin-booking-customer-note">
+                      <strong>ملاحظة الزبون:</strong> {booking.notes}
+                    </p>}
+                    <label className="admin-booking-notes">ملاحظة من المحل (تظهر للزبون)
+                      <input name="ownerNote" maxLength={1000} defaultValue={booking.ownerNote ?? ''} />
                     </label>
                     <div className="admin-inline-actions">
                       <button className="admin-primary-button" disabled={busyBookingId === booking.id}>حفظ التعديل</button>

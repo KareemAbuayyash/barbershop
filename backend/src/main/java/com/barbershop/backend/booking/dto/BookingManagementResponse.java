@@ -17,6 +17,7 @@ public record BookingManagementResponse(
 		LocalDate queueDate,
 		Integer queuePosition,
 		String notes,
+	String ownerNote,
 		UUID serviceId,
 		String serviceName,
 		BigDecimal servicePrice,

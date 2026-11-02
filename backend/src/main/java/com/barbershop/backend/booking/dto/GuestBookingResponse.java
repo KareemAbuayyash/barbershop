@@ -14,5 +14,6 @@ public record GuestBookingResponse(
 		Instant startsAt,
 		LocalDate queueDate,
 		Integer queuePosition,
-		Instant createdAt) {
+		Instant createdAt,
+		String guestAccessToken) {
 }

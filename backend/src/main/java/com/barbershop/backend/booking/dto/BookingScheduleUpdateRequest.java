@@ -9,9 +9,10 @@ public record BookingScheduleUpdateRequest(
 		Instant startsAt,
 		LocalDate preferredDate,
 		LocalDate queueDate,
-		@Size(max = 1000) String notes) {
+	@Size(max = 2000) String notes,
+	@Size(max = 1000) String ownerNote) {
 
 	public BookingScheduleUpdateRequest(Instant startsAt, LocalDate queueDate, String notes) {
-		this(startsAt, null, queueDate, notes);
+		this(startsAt, null, queueDate, notes, null);
 	}
 }

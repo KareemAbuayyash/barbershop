@@ -3,13 +3,17 @@ package com.barbershop.backend.security;
 import java.util.List;
 import java.time.Duration;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 
 import com.barbershop.backend.account.OwnerBootstrapProperties;
+import com.barbershop.backend.admin.NotificationService;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseCookie;
@@ -32,6 +36,8 @@ import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 @Configuration
 @EnableConfigurationProperties({OwnerBootstrapProperties.class, RateLimitProperties.class})
 public class SecurityConfiguration {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(SecurityConfiguration.class);
 
 	@Bean
 	HttpSessionCsrfTokenRepository csrfTokenRepository() {
@@ -67,16 +73,17 @@ public class SecurityConfiguration {
 			HttpSecurity http,
 			HttpSessionCsrfTokenRepository csrfTokenRepository,
 			SecurityContextRepository securityContextRepository,
-			ApiSecurityErrorHandler securityErrorHandler) throws Exception {
+			ApiSecurityErrorHandler securityErrorHandler,
+			NotificationService notificationService) throws Exception {
 		http
 				.authorizeHttpRequests(authorize -> authorize
+						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/services/manage").hasRole("OWNER")
 						.requestMatchers(HttpMethod.GET, "/api/services", "/api/services/*").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/booking-settings").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/shop-profile").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/bookings/availability").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
-						.requestMatchers(HttpMethod.GET, "/api/push/configuration").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/bookings").permitAll()
 						.requestMatchers(HttpMethod.POST,
 								"/api/auth/login",
@@ -84,6 +91,8 @@ public class SecurityConfiguration {
 								"/api/auth/logout").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/customer/bookings", "/api/customer/profile").hasRole("CUSTOMER")
+						.requestMatchers("/api/guest-notifications/**").permitAll()
+						.requestMatchers("/api/notifications/**").hasAnyRole("OWNER", "CUSTOMER")
 						.requestMatchers("/api/admin/**").hasRole("OWNER")
 						.requestMatchers(HttpMethod.GET, "/api/bookings/availability/*").hasRole("OWNER")
 						.requestMatchers(HttpMethod.GET, "/api/bookings", "/api/bookings/*").hasRole("OWNER")
@@ -114,6 +123,16 @@ public class SecurityConfiguration {
 						.invalidateHttpSession(true)
 						.clearAuthentication(true)
 						.logoutSuccessHandler((request, response, authentication) -> {
+							String pushEndpoint = request.getHeader("X-Push-Endpoint");
+							// This also handles devices whose session expired or whose old logout
+							// happened before account-push cleanup was installed.
+							if (pushEndpoint != null && !pushEndpoint.isBlank()) {
+								try {
+									notificationService.removeDeviceSubscription(pushEndpoint);
+								} catch (RuntimeException exception) {
+									LOGGER.warn("Unable to detach this browser's account push subscriptions during logout.", exception);
+								}
+							}
 							var cookieConfig = request.getServletContext().getSessionCookieConfig();
 							String cookieName = cookieConfig.getName() == null || cookieConfig.getName().isBlank()
 									? "JSESSIONID"

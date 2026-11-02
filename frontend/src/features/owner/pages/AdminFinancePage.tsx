@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { BarChart3, CircleDollarSign, CreditCard, Wallet } from 'lucide-react'
+import { BarChart3, CircleDollarSign, CreditCard, MessageCircle, Wallet } from 'lucide-react'
 import { apiRequest, getErrorMessage, type BookingPage } from '../../../lib/api'
 import { getShopDate } from '../../../lib/shop-time'
 import type {
@@ -33,6 +33,21 @@ const methods = [
   { value: 'TRANSFER', label: 'تحويل' },
   { value: 'OTHER', label: 'أخرى' },
 ]
+
+function whatsappNumber(phoneNumber: string | null) {
+  const digits = phoneNumber?.replace(/\D/g, '') ?? ''
+  if (!digits) return null
+  if (digits.startsWith('00')) return digits.slice(2)
+  if (digits.startsWith('0')) return `970${digits.slice(1)}`
+  return digits
+}
+
+function debtReminderUrl(debt: AdminDebt) {
+  const phone = whatsappNumber(debt.phoneNumber)
+  if (!phone) return null
+  const message = `مرحباً ${debt.customerName}، نذكّرك بوجود مبلغ مستحق بقيمة ${debt.balance.toLocaleString('ar')} شيكل عن خدمة ${debt.serviceName} في BARBER HOUSE. يرجى تسديده عند زيارتك القادمة. شكراً لك.`
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+}
 
 const labels: Record<Section, { eyebrow: string; title: string }> = {
   accounts: { eyebrow: 'الأرصدة وسجل العملاء', title: 'الحسابات والذمم' },
@@ -288,18 +303,28 @@ function AdminFinancePage({ section }: { section: Section }) {
 
         {section === 'debts' && (
           <div className="admin-finance-list">
-            {debts.map((debt) => <article className="admin-debt-row" key={debt.bookingId}>
-              <div><strong>{debt.customerName}</strong><small>{debt.serviceName} · {debt.servicePrice.toLocaleString('ar')} ₪</small>
-                {debt.phoneNumber && <small dir="ltr">{debt.phoneNumber}</small>}</div>
-              <strong className="admin-debt-value">المتبقي {debt.balance.toLocaleString('ar')} ₪</strong>
-              <form className="admin-debt-payment" onSubmit={(event) => void submitPayment(event, debt.bookingId, true)}>
-                <input name="amount" aria-label="المبلغ المحصل" type="number" min="0.01" max={debt.balance}
-                  step="0.01" placeholder="المبلغ" required />
-                <select name="method" aria-label="طريقة الدفع">{methods.map((method) =>
-                  <option key={method.value} value={method.value}>{method.label}</option>)}</select>
-                <button className="admin-secondary-button" disabled={busy}>تسديد</button>
-              </form>
-            </article>)}
+            {debts.map((debt) => {
+              const reminderUrl = debtReminderUrl(debt)
+              return <article className="admin-debt-row" key={debt.bookingId}>
+                <div><strong>{debt.customerName}</strong><small>{debt.serviceName} · {debt.servicePrice.toLocaleString('ar')} ₪</small>
+                  {debt.phoneNumber && <small dir="ltr">{debt.phoneNumber}</small>}</div>
+                <strong className="admin-debt-value">المتبقي {debt.balance.toLocaleString('ar')} ₪</strong>
+                <div className="admin-debt-actions">
+                  {reminderUrl
+                    ? <a className="admin-debt-reminder" href={reminderUrl} target="_blank" rel="noreferrer">
+                        <MessageCircle size={16} /> تذكير بالدين عبر واتساب
+                      </a>
+                    : <span className="admin-debt-no-phone">أضف رقم هاتف لإرسال التذكير</span>}
+                  <form className="admin-debt-payment" onSubmit={(event) => void submitPayment(event, debt.bookingId, true)}>
+                    <input name="amount" aria-label="المبلغ المحصل" type="number" min="0.01" max={debt.balance}
+                      step="0.01" placeholder="المبلغ" required />
+                    <select name="method" aria-label="طريقة الدفع">{methods.map((method) =>
+                      <option key={method.value} value={method.value}>{method.label}</option>)}</select>
+                    <button className="admin-secondary-button" disabled={busy}>تسديد</button>
+                  </form>
+                </div>
+              </article>
+            })}
             {!debts.length && <p className="admin-empty-inline">لا توجد ديون مستحقة.</p>}
           </div>
         )}

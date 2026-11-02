@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CalendarDays } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import PageIntro from '../../../components/ui/PageIntro'
@@ -25,23 +25,35 @@ function MyBookingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    let active = true
-    void apiRequest<CustomerBooking[]>('/api/customer/bookings')
-      .then((result) => {
-        if (active) setBookings(result)
-      })
-      .catch((cause: unknown) => {
-        if (active) setError(getErrorMessage(cause, 'تعذر تحميل حجوزاتك. حاول مرة أخرى.'))
-      })
-      .finally(() => {
-        if (active) setIsLoading(false)
-      })
-
-    return () => {
-      active = false
+  const loadBookings = useCallback(async () => {
+    try {
+      const result = await apiRequest<CustomerBooking[]>('/api/customer/bookings')
+      setBookings(result)
+      setError('')
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر تحميل حجوزاتك. حاول مرة أخرى.'))
+    } finally {
+      setIsLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadBookings()
+    }
+    const onServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'barbershop:notification-received') void loadBookings()
+    }
+    void loadBookings()
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage)
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
+    }
+  }, [loadBookings])
 
   return (
     <div className="page-content customer-page">
@@ -87,6 +99,12 @@ function MyBookingsPage() {
                   </div>
                   {booking.queuePosition && <div><dt>رقم الدور</dt><dd>{booking.queuePosition}</dd></div>}
                 </dl>
+                {(booking.notes || booking.ownerNote) && (
+                  <div className="customer-booking-notes">
+                    {booking.notes && <p><strong>ملاحظتك للمحل:</strong> {booking.notes}</p>}
+                    {booking.ownerNote && <p><strong>ملاحظة من المحل:</strong> {booking.ownerNote}</p>}
+                  </div>
+                )}
               </article>
             ))}
           </div>

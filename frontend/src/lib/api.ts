@@ -27,6 +27,8 @@ export interface CustomerBooking {
   startsAt: string | null
   queueDate: string | null
   queuePosition: number | null
+  notes: string | null
+  ownerNote: string | null
   serviceName: string
   servicePrice: number
   serviceDurationMinutes: number
@@ -69,6 +71,7 @@ export interface Booking {
   queueDate: string | null
   queuePosition: number | null
   notes: string | null
+  ownerNote: string | null
   serviceId: string
   serviceName: string
   servicePrice: number
@@ -96,6 +99,7 @@ export interface GuestBookingResult {
   queueDate: string | null
   queuePosition: number | null
   createdAt: string
+  guestAccessToken?: string | null
 }
 
 let csrfToken: string | undefined
@@ -158,12 +162,34 @@ export async function apiRequest<T>(
     headers.set(csrfHeaderName, token)
   }
 
-  const response = await fetch(path, {
+  const sendRequest = () => fetch(path, {
     ...init,
     method,
     headers,
     credentials: 'include',
   })
+  let response = await sendRequest()
+
+  // Retry only when the server identifies CSRF as the cause. A role or other
+  // authorization failure must not replay a state-changing request.
+  if (response.status === 403 && !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+    const deniedBody = await response.clone().json().catch(() => undefined) as ApiErrorBody | undefined
+    const csrfWasRejected = `${deniedBody?.detail ?? ''} ${deniedBody?.title ?? ''}`
+      .toLowerCase()
+      .includes('csrf')
+    if (csrfWasRejected) {
+      csrfToken = undefined
+      try {
+        await getCsrfToken()
+        if (csrfToken) {
+          headers.set(csrfHeaderName, csrfToken)
+          response = await sendRequest()
+        }
+      } catch {
+        // Preserve the original response if the token refresh fails.
+      }
+    }
+  }
 
   if (!response.ok) {
     const checkingExpiredProtectedSession = path === '/api/auth/me'
@@ -195,7 +221,12 @@ export function getErrorMessage(error: unknown, fallback: string): string {
       return 'انتهت جلسة الدخول أو لم يتم تسجيل الدخول. سجّل الدخول مجدداً.'
     }
     if (error.status === 403) {
-      return 'هذه العملية تحتاج صلاحية المالك. تحقّق من الحساب المسجّل ثم أعد تسجيل الدخول.'
+      if (error.message.toLowerCase().includes('csrf')) {
+        return 'انتهت صلاحية رمز الحماية. حدّث الصفحة ثم أعد تسجيل الدخول.'
+      }
+      return error.message === 'Access is denied.'
+        ? 'الخادم رفض العملية. أعد تحميل الصفحة، وإذا استمر الخطأ أعد تسجيل الدخول.'
+        : error.message
     }
     return error.message
   }
