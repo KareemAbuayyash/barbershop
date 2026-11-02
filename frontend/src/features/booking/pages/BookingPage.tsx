@@ -6,6 +6,14 @@ import PageIntro from '../../../components/ui/PageIntro'
 import { useAuth } from '../../auth/useAuth'
 import BookingModeCards from '../components/BookingModeCards'
 import { apiRequest, getErrorMessage, type BookingMode, type BookingSettings, type GuestBookingResult, type Service } from '../../../lib/api'
+
+function createIdempotencyKey(): string {
+  const cryptoApi = globalThis.crypto
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID()
+  }
+  return `booking-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 import { getShopDate } from '../../../lib/shop-time'
 
 interface BookingAvailability {
@@ -152,29 +160,29 @@ function BookingPage() {
     setResult(null)
     setIsSubmitting(true)
 
-    const formData = new FormData(event.currentTarget)
-    const preferredTime = String(formData.get('startsAt') ?? '')
-    const startsAt = preferredTime || null
-
-    const requestBody = {
-      bookingMode: selectedMode,
-      serviceId: selectedServiceId,
-      customerName: String(formData.get('customerName')).trim(),
-      customerPhone: String(formData.get('customerPhone')).trim() || null,
-      bookForSomeoneElse: isCustomer && bookingForSomeoneElse,
-      startsAt,
-      preferredDate: selectedMode === 'CONFIRMATION_REQUEST' && preferredDateSelected
-        ? scheduleDate
-        : null,
-      queueDate: selectedMode === 'DAY_QUEUE' ? scheduleDate : null,
-      notes: String(formData.get('notes')).trim() || null,
-    }
-    const fingerprint = JSON.stringify(requestBody)
-    if (!idempotency.current || idempotency.current.fingerprint !== fingerprint) {
-      idempotency.current = { fingerprint, key: crypto.randomUUID() }
-    }
-
     try {
+      const formData = new FormData(event.currentTarget)
+      const preferredTime = String(formData.get('startsAt') ?? '')
+      const startsAt = preferredTime || null
+
+      const requestBody = {
+        bookingMode: selectedMode,
+        serviceId: selectedServiceId,
+        customerName: String(formData.get('customerName')).trim(),
+        customerPhone: String(formData.get('customerPhone')).trim() || null,
+        bookForSomeoneElse: isCustomer && bookingForSomeoneElse,
+        startsAt,
+        preferredDate: selectedMode === 'CONFIRMATION_REQUEST' && preferredDateSelected
+          ? scheduleDate
+          : null,
+        queueDate: selectedMode === 'DAY_QUEUE' ? scheduleDate : null,
+        notes: String(formData.get('notes')).trim() || null,
+      }
+      const fingerprint = JSON.stringify(requestBody)
+      if (!idempotency.current || idempotency.current.fingerprint !== fingerprint) {
+        idempotency.current = { fingerprint, key: createIdempotencyKey() }
+      }
+
       const created = await apiRequest<GuestBookingResult>('/api/bookings', {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotency.current.key },
