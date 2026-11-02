@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 192 192" role="img" aria-labelledby="title">
+  <title>BARBER HOUSE</title>
+  <rect width="192" height="192" rx="40" fill="#11110f"/>
+  <path fill="#863bff" d="M115 16H71c-5 0-7.5 5.5-4.5 9.4L87 53H48c-5.8 0-8.8 6.7-4.9 11l60.4 66.2c4 4.4 11.4.7 10-5.1l-9.4-44.7h30.1c5.8 0 8.8-6.7 4.9-11.1L111 44h17c6 0 8.9-7 4.5-11.2l-12.5-15A7 7 0 0 0 115 16Z"/>
+  <path fill="#47bfff" d="M137 111c8.3 0 15 6.7 15 15s-6.7 15-15 15-15-6.7-15-15 6.7-15 15-15Z"/>
+</svg>

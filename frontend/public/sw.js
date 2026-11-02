@@ -1,3 +1,37 @@
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting())
+})
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim())
+})
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return
+
+  const requestUrl = new URL(event.request.url)
+  if (requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith('/api/')) return
+
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(event.request)
+
+      if (response.ok && event.request.mode === 'navigate') {
+        const cache = await caches.open('barber-house-pages-v1')
+        await cache.put('/', response.clone())
+      }
+
+      return response
+    } catch (error) {
+      const cachedResponse = await caches.match(event.request)
+        || (event.request.mode === 'navigate' ? await caches.match('/') : undefined)
+
+      if (cachedResponse) return cachedResponse
+      throw error
+    }
+  })())
+})
+
 self.addEventListener('push', (event) => {
   const message = event.data ? event.data.json() : {}
   event.waitUntil(self.registration.showNotification(message.title || 'BARBER HOUSE', {
