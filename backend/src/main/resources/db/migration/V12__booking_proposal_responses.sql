@@ -1,0 +1,3 @@
+ALTER TABLE bookings
+    ADD COLUMN owner_proposed BOOLEAN NOT NULL DEFAULT FALSE;
+

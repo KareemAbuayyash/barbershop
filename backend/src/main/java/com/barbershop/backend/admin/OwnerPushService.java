@@ -2,6 +2,7 @@ package com.barbershop.backend.admin;
 
 import java.net.URI;
 import java.security.Security;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -104,7 +105,8 @@ public class OwnerPushService {
 			try {
 				PushService pushService = new PushService(publicKey, privateKey, subject);
 				HttpResponse response = pushService.send(new Notification(
-						subscription.endpoint(), subscription.p256dh(), subscription.auth(), payload, 3600));
+						subscription.endpoint(), subscription.p256dh(), subscription.auth(),
+						payload.getBytes(StandardCharsets.UTF_8), 3600));
 				int status = response.getStatusLine().getStatusCode();
 				if (status == 404 || status == 410) {
 					jdbc.update("DELETE FROM owner_push_subscriptions WHERE endpoint = ?", subscription.endpoint());
