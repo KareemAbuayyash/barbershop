@@ -20,6 +20,7 @@ public record BookingManagementResponse(
 		String serviceName,
 		BigDecimal servicePrice,
 		int serviceDurationMinutes,
+		UUID employeeId,
 		String customerName,
 		String customerPhone,
 		Instant createdAt,

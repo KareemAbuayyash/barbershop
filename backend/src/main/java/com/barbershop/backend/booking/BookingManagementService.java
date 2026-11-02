@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.barbershop.backend.booking.dto.BookingManagementResponse;
 import com.barbershop.backend.booking.dto.BookingPageResponse;
+import com.barbershop.backend.booking.dto.BookingScheduleUpdateRequest;
 import com.barbershop.backend.booking.dto.ConfirmBookingRequest;
 import com.barbershop.backend.booking.dto.QueueReorderRequest;
 
@@ -33,16 +34,25 @@ public class BookingManagementService {
 
 	private final BookingRepository bookingRepository;
 	private final JdbcTemplate jdbcTemplate;
+	private final ShopScheduleService shopScheduleService;
 
-	public BookingManagementService(BookingRepository bookingRepository, JdbcTemplate jdbcTemplate) {
+	public BookingManagementService(
+			BookingRepository bookingRepository,
+			JdbcTemplate jdbcTemplate,
+			ShopScheduleService shopScheduleService) {
 		this.bookingRepository = bookingRepository;
 		this.jdbcTemplate = jdbcTemplate;
+		this.shopScheduleService = shopScheduleService;
 	}
 
 	public BookingPageResponse listBookings(
 			LocalDate date,
+			LocalDate fromDate,
+			LocalDate toDate,
 			BookingStatus status,
 			BookingMode mode,
+			boolean queueOnly,
+			String query,
 			int page,
 			int size) {
 		if (page < 0 || size < 1 || size > 100 || (long) page * size > MAX_PAGE_OFFSET) {
@@ -51,17 +61,35 @@ public class BookingManagementService {
 					"Page must be non-negative, size must be between 1 and 100, and the offset must not exceed 100000.");
 		}
 
-		Instant dayStart = date == null ? null : date.atStartOfDay(SHOP_ZONE).toInstant();
-		Instant nextDayStart = date == null ? null : date.plusDays(1).atStartOfDay(SHOP_ZONE).toInstant();
+		String normalizedQuery = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
+		if (normalizedQuery.length() > 150) {
+			throw badRequest("Invalid search query", "Search text must not exceed 150 characters.");
+		}
+		String searchPattern = "%" + escapeLike(normalizedQuery) + "%";
+		String phonePattern = "%" + normalizedQuery.replaceAll("[^0-9]", "") + "%";
+		LocalDate safeDate = date == null ? LocalDate.of(1, 1, 1) : date;
+		LocalDate safeFromDate = fromDate == null ? LocalDate.of(1, 1, 1) : fromDate;
+		LocalDate safeToDate = toDate == null ? LocalDate.of(9999, 12, 31) : toDate;
 		Page<Booking> result = bookingRepository.findManagementBookings(
 				status != null,
 				status,
 				mode != null,
 				mode,
+				queueOnly,
+				List.of(BookingMode.DAY_QUEUE, BookingMode.SAME_DAY_QUEUE),
+				!normalizedQuery.isBlank(),
+				searchPattern,
+				phonePattern,
 				date != null,
-				date,
-				dayStart,
-				nextDayStart,
+				safeDate,
+				safeDate.atStartOfDay(SHOP_ZONE).toInstant(),
+				safeDate.plusDays(1).atStartOfDay(SHOP_ZONE).toInstant(),
+				fromDate != null,
+				safeFromDate,
+				safeFromDate.atStartOfDay(SHOP_ZONE).toInstant(),
+				toDate != null,
+				safeToDate,
+				safeToDate.plusDays(1).atStartOfDay(SHOP_ZONE).toInstant(),
 				PageRequest.of(page, size));
 		return new BookingPageResponse(
 				result.getContent().stream().map(BookingManagementService::toResponse).toList(),
@@ -69,6 +97,10 @@ public class BookingManagementService {
 				result.getSize(),
 				result.getTotalElements(),
 				result.getTotalPages());
+	}
+
+	private static String escapeLike(String value) {
+		return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}
 
 	public BookingManagementResponse getBooking(UUID id) {
@@ -92,6 +124,7 @@ public class BookingManagementService {
 				if (requestedStart != null) {
 					throw badRequest("Invalid queue confirmation", "Queue bookings cannot be assigned an appointment time.");
 				}
+				shopScheduleService.requireOpenQueueDate(booking.getQueueDate());
 			}
 			case EXACT_APPOINTMENT, LEGACY -> {
 				if (booking.getStartsAt() == null) {
@@ -101,6 +134,8 @@ public class BookingManagementService {
 					throw badRequest("Invalid appointment time", "Exact appointment confirmation must use its requested time.");
 				}
 				requireFutureStart(booking.getStartsAt());
+				shopScheduleService.requireAppointmentTime(
+						booking.getStartsAt(), booking.getServiceDurationSnapshotMinutes(), booking.getId());
 			}
 			case CONFIRMATION_REQUEST -> {
 				Instant confirmedStart = requestedStart == null ? booking.getStartsAt() : requestedStart;
@@ -110,6 +145,8 @@ public class BookingManagementService {
 							"A confirmation request without a proposed time must be given a start time.");
 				}
 				requireFutureStart(confirmedStart);
+				shopScheduleService.requireAppointmentTime(
+						confirmedStart, booking.getServiceDurationSnapshotMinutes(), booking.getId());
 				booking.setStartsAt(confirmedStart);
 			}
 		}
@@ -138,6 +175,59 @@ public class BookingManagementService {
 					"A timed appointment cannot be completed before its scheduled start.");
 		}
 		booking.setStatus(BookingStatus.COMPLETED);
+		return toResponse(bookingRepository.saveAndFlush(booking));
+	}
+
+	@Transactional
+	public BookingManagementResponse updateSchedule(UUID id, BookingScheduleUpdateRequest request) {
+		Booking booking = findForLifecycleUpdate(id);
+		if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+			throw conflict("Booking cannot be edited", "Only pending or confirmed bookings can be edited.");
+		}
+
+		switch (booking.getBookingMode()) {
+			case EXACT_APPOINTMENT, LEGACY -> {
+				if (request.startsAt() == null || request.queueDate() != null) {
+					throw badRequest("Invalid appointment fields", "An appointment requires a start time and no queue date.");
+				}
+				requireFutureStart(request.startsAt());
+				shopScheduleService.requireAppointmentTime(
+						request.startsAt(), booking.getServiceDurationSnapshotMinutes(), booking.getId());
+				booking.setStartsAt(request.startsAt());
+			}
+			case CONFIRMATION_REQUEST -> {
+				if (request.queueDate() != null) {
+					throw badRequest("Invalid confirmation request", "Confirmation requests must not include a queue date.");
+				}
+				if (request.startsAt() != null) {
+					requireFutureStart(request.startsAt());
+					shopScheduleService.requireAppointmentTime(
+							request.startsAt(), booking.getServiceDurationSnapshotMinutes(), booking.getId());
+				}
+				booking.setStartsAt(request.startsAt());
+			}
+			case DAY_QUEUE -> {
+				if (request.startsAt() != null || request.queueDate() == null) {
+					throw badRequest("Invalid day queue request", "A day queue booking requires a queue date and no start time.");
+				}
+				if (request.queueDate().isBefore(LocalDate.now(SHOP_ZONE))) {
+					throw badRequest("Invalid queue date", "Queue date must not be before the current shop-local date.");
+				}
+				shopScheduleService.requireOpenQueueDate(request.queueDate());
+				if (!request.queueDate().equals(booking.getQueueDate())) {
+					lockQueueCounter(request.queueDate());
+					booking.setQueueDate(request.queueDate());
+					booking.setQueuePosition(allocateQueuePosition(request.queueDate()));
+				}
+			}
+			case SAME_DAY_QUEUE -> {
+				if (request.startsAt() != null || request.queueDate() != null) {
+					throw badRequest("Invalid same-day queue request", "Same-day queue bookings do not accept a date or time.");
+				}
+				shopScheduleService.requireOpenQueueDate(booking.getQueueDate());
+			}
+		}
+		booking.setNotes(request.notes() == null || request.notes().isBlank() ? null : request.notes().trim());
 		return toResponse(bookingRepository.saveAndFlush(booking));
 	}
 
@@ -232,6 +322,17 @@ public class BookingManagementService {
 				date);
 	}
 
+	private Integer allocateQueuePosition(LocalDate date) {
+		return jdbcTemplate.queryForObject("""
+				INSERT INTO booking_queue_counters (queue_date, last_position)
+				VALUES (?, 1)
+				ON CONFLICT (queue_date) DO UPDATE
+				SET last_position = booking_queue_counters.last_position + 1,
+				    updated_at = CURRENT_TIMESTAMP
+				RETURNING last_position
+				""", Integer.class, date);
+	}
+
 	private static void requireFutureStart(Instant startsAt) {
 		if (!startsAt.isAfter(Instant.now())) {
 			throw badRequest("Invalid appointment time", "Appointment time must be in the future.");
@@ -257,6 +358,7 @@ public class BookingManagementService {
 				booking.getServiceNameSnapshot(),
 				booking.getServicePriceSnapshot(),
 				booking.getServiceDurationSnapshotMinutes(),
+				booking.getEmployeeId(),
 				booking.getCustomer() == null ? null : booking.getCustomer().getName(),
 				booking.getCustomer() == null ? null : booking.getCustomer().getPhoneNumber(),
 				booking.getCreatedAt(),

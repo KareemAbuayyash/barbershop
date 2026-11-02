@@ -61,6 +61,22 @@ export function shopLocalDateTimeToIso(value: string): string {
   return result.toISOString()
 }
 
+export function isoToShopLocalDateTime(value: string | null): string {
+  if (!value) return ''
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: shopTimeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(value)).map(({ type, value: part }) => [type, part]),
+  )
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+}
+
 export function formatShopDateTime(value: string | null): string {
   if (!value) {
     return 'لم يُحدد بعد'

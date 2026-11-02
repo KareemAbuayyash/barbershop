@@ -229,6 +229,24 @@ class ServiceApiIntegrationTests {
 	@Transactional
 	@Rollback
 	@WithMockUser(roles = "OWNER")
+	void archivesActiveServicesWithoutDeletingTheirRecords() throws Exception {
+		ServiceEntity service = serviceRepository.saveAndFlush(new ServiceEntity(
+				"Archived cut", "Historical service", new BigDecimal("25.50"), 45));
+		long countBefore = serviceRepository.count();
+		int activeBefore = serviceRepository.findAllByActiveTrueOrderByNameAsc().size();
+
+		mockMvc.perform(patch("/api/services/archive").with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$").value(activeBefore));
+
+		assertThat(serviceRepository.count()).isEqualTo(countBefore);
+		assertThat(serviceRepository.findById(service.getId()).orElseThrow().isActive()).isFalse();
+	}
+
+	@Test
+	@Transactional
+	@Rollback
+	@WithMockUser(roles = "OWNER")
 	void deactivatingServiceDoesNotChangeBookingSnapshots() throws Exception {
 		ServiceEntity service = serviceRepository.saveAndFlush(new ServiceEntity(
 				"Classic cut", "A service", new BigDecimal("25.50"), 45));
@@ -288,6 +306,8 @@ class ServiceApiIntegrationTests {
 						.content("""
 								{"active": true}
 								"""))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(patch("/api/services/archive").with(csrf()))
 				.andExpect(status().isUnauthorized());
 	}
 

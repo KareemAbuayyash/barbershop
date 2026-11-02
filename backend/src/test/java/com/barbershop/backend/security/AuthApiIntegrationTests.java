@@ -84,6 +84,32 @@ class AuthApiIntegrationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.username").value("owner"))
 				.andExpect(jsonPath("$.authorities[0]").value("ROLE_OWNER"));
+		mockMvc.perform(get("/api/admin/summary").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/customers").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/reports").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/payments?fromDate=2026-01-01&toDate=2026-12-31")
+						.session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/debts").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/expenses?fromDate=2026-01-01&toDate=2026-12-31")
+						.session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/inventory/products").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/employees").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/notifications").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/settings").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/services/manage").session(authenticatedSession))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/bookings").session(authenticatedSession))
+				.andExpect(status().isOk());
 
 		MvcResult postLoginCsrf = mockMvc.perform(get("/api/csrf").session(authenticatedSession))
 				.andExpect(status().isOk())

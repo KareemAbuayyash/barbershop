@@ -72,6 +72,7 @@ export interface Booking {
   serviceName: string
   servicePrice: number
   serviceDurationMinutes: number
+  employeeId?: string | null
   customerName: string
   customerPhone: string | null
   createdAt: string
@@ -103,7 +104,7 @@ async function readError(response: Response): Promise<ApiError> {
   let message = `Request failed (${response.status})`
   const contentType = response.headers.get('content-type') ?? ''
 
-  if (contentType.includes('application/json')) {
+  if (contentType.includes('json')) {
     const body = await response.json() as ApiErrorBody
     message = body.detail || body.title || message
   }
@@ -176,6 +177,12 @@ export function clearCsrfToken(): void {
 
 export function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return 'انتهت جلسة الدخول أو لم يتم تسجيل الدخول. سجّل الدخول مجدداً.'
+    }
+    if (error.status === 403) {
+      return 'هذه العملية تحتاج صلاحية المالك. تحقّق من الحساب المسجّل ثم أعد تسجيل الدخول.'
+    }
     return error.message
   }
   return fallback

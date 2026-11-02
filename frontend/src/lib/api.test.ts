@@ -35,4 +35,22 @@ describe('session API requests', () => {
     expect(headers.get('Idempotency-Key')).toBe('request-1')
     expect(headers.get('Content-Type')).toBe('application/json')
   })
+
+  it('reads Spring problem details from JSON API errors', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({
+        title: 'Invalid request',
+        status: 400,
+        detail: 'The date range is invalid.',
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    ))
+
+    const { apiRequest, getErrorMessage } = await import('./api')
+    const error = await apiRequest('/api/bookings').catch((cause: unknown) => cause)
+
+    expect(getErrorMessage(error, 'fallback')).toBe('The date range is invalid.')
+  })
 })

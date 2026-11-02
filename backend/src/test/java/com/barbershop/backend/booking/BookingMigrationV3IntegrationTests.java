@@ -1,5 +1,7 @@
 package com.barbershop.backend.booking;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.Date;
@@ -114,6 +116,7 @@ class BookingMigrationV3IntegrationTests {
 		try (Connection connection = dataSource.getConnection();
 				Statement statement = connection.createStatement()) {
 			statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+			statement.execute("SET search_path TO barbershop_test");
 		}
 	}
 
@@ -141,9 +144,26 @@ class BookingMigrationV3IntegrationTests {
 	private Connection connectToSchema(String schema) throws SQLException {
 		Connection connection = dataSource.getConnection();
 		try (Statement statement = connection.createStatement()) {
-			statement.execute("SET search_path TO " + schema + ", public");
+			statement.execute("SET search_path TO " + schema + ", barbershop_test");
 		}
-		return connection;
+		return (Connection) Proxy.newProxyInstance(
+				Connection.class.getClassLoader(),
+				new Class<?>[] { Connection.class },
+				(proxy, method, arguments) -> {
+					if (method.getName().equals("close") && method.getParameterCount() == 0) {
+						try (Statement reset = connection.createStatement()) {
+							reset.execute("SET search_path TO barbershop_test");
+						} finally {
+							connection.close();
+						}
+						return null;
+					}
+					try {
+						return method.invoke(connection, arguments);
+					} catch (InvocationTargetException exception) {
+						throw exception.getCause();
+					}
+				});
 	}
 
 	private void insertV2Fixtures(String schema, boolean overlapping) throws SQLException {

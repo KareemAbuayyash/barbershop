@@ -70,6 +70,8 @@ public class SecurityConfiguration {
 						.requestMatchers(HttpMethod.GET, "/api/services/manage").hasRole("OWNER")
 						.requestMatchers(HttpMethod.GET, "/api/services", "/api/services/*").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/booking-settings").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/shop-profile").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/bookings/availability").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/bookings").permitAll()
 						.requestMatchers(HttpMethod.POST,
@@ -77,13 +79,16 @@ public class SecurityConfiguration {
 								"/api/auth/register",
 								"/api/auth/logout").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
-						.requestMatchers(HttpMethod.GET, "/api/customer/bookings").hasRole("CUSTOMER")
+						.requestMatchers(HttpMethod.GET, "/api/customer/bookings", "/api/customer/profile").hasRole("CUSTOMER")
+						.requestMatchers("/api/admin/**").hasRole("OWNER")
 						.requestMatchers(HttpMethod.GET, "/api/bookings", "/api/bookings/*").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PATCH,
 								"/api/bookings/*/confirm",
 								"/api/bookings/*/cancel",
 								"/api/bookings/*/complete",
 								"/api/bookings/queue/reorder").hasRole("OWNER")
+						.requestMatchers(HttpMethod.PUT, "/api/bookings/*/schedule").hasRole("OWNER")
+						.requestMatchers(HttpMethod.PATCH, "/api/services/archive").hasRole("OWNER")
 						.requestMatchers(HttpMethod.POST, "/api/services").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PUT, "/api/services/*").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PATCH, "/api/services/*/active").hasRole("OWNER")

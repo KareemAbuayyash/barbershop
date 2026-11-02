@@ -10,4 +10,6 @@ public interface ManagementAccountRepository extends JpaRepository<ManagementAcc
 	Optional<ManagementAccount> findByUsernameNormalized(String usernameNormalized);
 
 	boolean existsByRole(String role);
+
+	Optional<ManagementAccount> findByRole(String role);
 }

@@ -17,5 +17,17 @@ public record GuestBookingRequest(
 		@Size(max = 32) String customerPhone,
 		Instant startsAt,
 		LocalDate queueDate,
-		String notes) {
+		String notes,
+		boolean bookForSomeoneElse) {
+
+	public GuestBookingRequest(
+			BookingMode bookingMode,
+			UUID serviceId,
+			String customerName,
+			String customerPhone,
+			Instant startsAt,
+			LocalDate queueDate,
+			String notes) {
+		this(bookingMode, serviceId, customerName, customerPhone, startsAt, queueDate, notes, false);
+	}
 }

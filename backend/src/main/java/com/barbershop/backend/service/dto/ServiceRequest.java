@@ -14,7 +14,6 @@ public record ServiceRequest(
 		@Size(min = 2, max = 150)
 		String name,
 
-		@NotBlank
 		@Size(max = 10000)
 		String description,
 
@@ -31,5 +30,6 @@ public record ServiceRequest(
 		if (name != null) {
 			name = name.trim();
 		}
+		description = description == null ? "" : description.trim();
 	}
 }

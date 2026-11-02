@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 import jakarta.persistence.EntityManager;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -48,6 +49,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GuestBookingApiIntegrationTests {
 
 	private static final ZoneId SHOP_ZONE = ZoneId.of("Asia/Hebron");
+	private static final String TEST_HOURS = """
+			{"MONDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "TUESDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "WEDNESDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "THURSDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "FRIDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "SATURDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "SUNDAY":{"opensAt":"00:00","closesAt":"23:59"}}
+			""";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -67,6 +77,13 @@ class GuestBookingApiIntegrationTests {
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	@BeforeEach
+	void enableTestShopHours() {
+		jdbcTemplate.update(
+				"UPDATE shop_profile SET opening_hours = ?::jsonb WHERE singleton_key = TRUE",
+				TEST_HOURS);
+	}
+
 	@Test
 	@Transactional
 	@Rollback
@@ -76,7 +93,7 @@ class GuestBookingApiIntegrationTests {
 
 		MvcResult exact = postBooking(
 				"exact-mode-key",
-				request(BookingMode.EXACT_APPOINTMENT, service, Instant.now().plusSeconds(3600), null, null, null))
+				request(BookingMode.EXACT_APPOINTMENT, service, upcomingQuarterHour(1), null, null, null))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.bookingMode").value("EXACT_APPOINTMENT"))
 				.andExpect(jsonPath("$.status").value("PENDING"))
@@ -116,9 +133,50 @@ class GuestBookingApiIntegrationTests {
 				.isEqualTo(jsonValue(dayQueue, "queuePosition") + 1);
 	}
 
+	@Test
+	@Transactional
+	@Rollback
+	void publicAvailabilityAndGuestBookingsRespectConfiguredOpeningHours() throws Exception {
+		enableAllBookingModes();
+		ServiceEntity service = createService();
+		LocalDate monday = LocalDate.now(SHOP_ZONE).plusDays(1);
+		while (monday.getDayOfWeek() != java.time.DayOfWeek.MONDAY) monday = monday.plusDays(1);
+		jdbcTemplate.update("""
+				UPDATE shop_profile SET opening_hours =
+				    '{"MONDAY":{"opensAt":"09:00","closesAt":"12:00"}}'::jsonb
+				WHERE singleton_key = TRUE
+				""");
+
+		mockMvc.perform(get("/api/bookings/availability")
+						.param("date", monday.toString())
+						.param("serviceId", service.getId().toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.open").value(true))
+				.andExpect(jsonPath("$.slots[0].localTime").value("09:00"));
+		mockMvc.perform(get("/api/bookings/availability")
+						.param("date", monday.plusDays(1).toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.open").value(false))
+				.andExpect(jsonPath("$.slots").isEmpty());
+
+		Instant outsideHours = monday.atTime(8, 45).atZone(SHOP_ZONE).toInstant();
+		postBooking(
+				"outside-hours-" + UUID.randomUUID(),
+				request(BookingMode.EXACT_APPOINTMENT, service, outsideHours, null, null, null))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail")
+						.value("The selected time is outside the shop's opening hours or available time slots."));
+	}
+
 	private int jsonValue(MvcResult result, String property) throws Exception {
 		return objectMapper.readTree(result.getResponse().getContentAsString())
 				.get(property).asInt();
+	}
+
+	private static Instant upcomingQuarterHour(int hoursAhead) {
+		var local = Instant.now().atZone(SHOP_ZONE).plusHours(hoursAhead).withSecond(0).withNano(0);
+		int remainder = local.getMinute() % 15;
+		return local.plusMinutes(remainder == 0 ? 0 : 15 - remainder).toInstant();
 	}
 
 	@Test
@@ -131,7 +189,7 @@ class GuestBookingApiIntegrationTests {
 
 		postBooking(
 				"globally-disabled-key",
-				request(BookingMode.EXACT_APPOINTMENT, service, Instant.now().plusSeconds(3600), null, null, null))
+				request(BookingMode.EXACT_APPOINTMENT, service, upcomingQuarterHour(1), null, null, null))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.title").value("Bookings unavailable"));
 
@@ -153,7 +211,7 @@ class GuestBookingApiIntegrationTests {
 			setBookingSettings(false, false, false, false, true);
 			postBooking(
 					key,
-					request(BookingMode.EXACT_APPOINTMENT, service, Instant.now().plusSeconds(3600), null, null, null))
+					request(BookingMode.EXACT_APPOINTMENT, service, upcomingQuarterHour(1), null, null, null))
 					.andExpect(status().isConflict());
 			assertThat(jdbcTemplate.queryForObject(
 					"SELECT count(*) FROM booking_idempotency WHERE idempotency_key = ?",
@@ -171,6 +229,7 @@ class GuestBookingApiIntegrationTests {
 	void rejectsMissingOrInactiveService() throws Exception {
 		enableAllBookingModes();
 		ServiceEntity inactive = createService();
+		long bookingsBefore = bookingRepository.count();
 		inactive.setActive(false);
 		serviceRepository.saveAndFlush(inactive);
 
@@ -189,7 +248,7 @@ class GuestBookingApiIntegrationTests {
 						null,
 						null))
 				.andExpect(status().isNotFound());
-		assertThat(bookingRepository.count()).isZero();
+		assertThat(bookingRepository.count()).isEqualTo(bookingsBefore);
 	}
 
 	@Test
@@ -216,7 +275,7 @@ class GuestBookingApiIntegrationTests {
 
 		postBooking(
 				"invalid-legacy-mode",
-				request(BookingMode.LEGACY, service, Instant.now().plusSeconds(3600), null, null, null))
+				request(BookingMode.LEGACY, service, upcomingQuarterHour(1), null, null, null))
 				.andExpect(status().isBadRequest());
 		postBooking(
 				"invalid-phone-key",

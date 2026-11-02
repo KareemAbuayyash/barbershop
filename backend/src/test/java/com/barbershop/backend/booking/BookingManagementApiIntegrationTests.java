@@ -15,6 +15,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -35,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -44,6 +46,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BookingManagementApiIntegrationTests {
 
 	private static final ZoneId SHOP_ZONE = ZoneId.of("Asia/Hebron");
+	private static final String TEST_HOURS = """
+			{"MONDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "TUESDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "WEDNESDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "THURSDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "FRIDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "SATURDAY":{"opensAt":"00:00","closesAt":"23:59"},
+			 "SUNDAY":{"opensAt":"00:00","closesAt":"23:59"}}
+			""";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -53,6 +64,49 @@ class BookingManagementApiIntegrationTests {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	@BeforeEach
+	void enableTestShopHours() {
+		jdbcTemplate.update(
+				"UPDATE shop_profile SET opening_hours = ?::jsonb WHERE singleton_key = TRUE",
+				TEST_HOURS);
+	}
+
+	@Test
+	@Transactional
+	@Rollback
+	void ownerCanRescheduleAppointmentsAndMoveDayQueueBookings() throws Exception {
+		Instant nextStart = upcomingQuarterHour(2);
+		UUID appointment = insertBooking(
+				BookingMode.EXACT_APPOINTMENT, upcomingQuarterHour(1), null, null,
+				BookingStatus.PENDING, "Appointment guest", null);
+
+		mockMvc.perform(put("/api/bookings/{id}/schedule", appointment)
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
+						.with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"startsAt":"%s","queueDate":null,"notes":"Moved by owner"}
+								""".formatted(nextStart)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.startsAt").value(nextStart.toString()))
+				.andExpect(jsonPath("$.notes").value("Moved by owner"));
+
+		LocalDate oldDate = LocalDate.now(SHOP_ZONE).plusDays(1);
+		LocalDate newDate = oldDate.plusDays(2);
+		UUID queued = insertBooking(
+				BookingMode.DAY_QUEUE, null, oldDate, 1, BookingStatus.PENDING, "Queue guest", null);
+		mockMvc.perform(put("/api/bookings/{id}/schedule", queued)
+						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
+						.with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"startsAt":null,"queueDate":"%s","notes":null}
+								""".formatted(newDate)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.queueDate").value(newDate.toString()))
+				.andExpect(jsonPath("$.queuePosition").value(1));
+	}
 
 	@Test
 	void managementRoutesRequireAuthenticationAndCsrf() throws Exception {
@@ -221,7 +275,7 @@ class BookingManagementApiIntegrationTests {
 	void exactAppointmentCanOnlyBeConfirmedOnceAndSnapshotsRemainUnchanged() throws Exception {
 		UUID id = insertBooking(
 				BookingMode.EXACT_APPOINTMENT,
-				Instant.now().plusSeconds(3600),
+				upcomingQuarterHour(1),
 				null,
 				null,
 				BookingStatus.PENDING,
@@ -254,7 +308,7 @@ class BookingManagementApiIntegrationTests {
 	void confirmationRequestCanUseProposedTimeOrRequireOne() throws Exception {
 		UUID withProposal = insertBooking(
 				BookingMode.CONFIRMATION_REQUEST,
-				Instant.now().plusSeconds(3600),
+				upcomingQuarterHour(1),
 				null,
 				null,
 				BookingStatus.PENDING,
@@ -280,7 +334,7 @@ class BookingManagementApiIntegrationTests {
 						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf()))
 				.andExpect(status().isBadRequest());
-		Instant acceptedTime = Instant.now().plusSeconds(7200);
+		Instant acceptedTime = upcomingQuarterHour(2);
 		mockMvc.perform(patch("/api/bookings/{id}/confirm", withoutProposal)
 						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
@@ -335,7 +389,7 @@ class BookingManagementApiIntegrationTests {
 				null);
 		UUID cancelled = insertBooking(
 				BookingMode.EXACT_APPOINTMENT,
-				Instant.now().plusSeconds(3600),
+				upcomingQuarterHour(1),
 				null,
 				null,
 				BookingStatus.CANCELLED,
@@ -362,7 +416,7 @@ class BookingManagementApiIntegrationTests {
 	@Transactional
 	@Rollback
 	void cancellationAndCompletionReleaseConfirmedAppointmentIntervals() throws Exception {
-		Instant startsAt = Instant.now().plusSeconds(3600);
+		Instant startsAt = upcomingQuarterHour(1);
 		UUID cancelled = insertBooking(
 				BookingMode.EXACT_APPOINTMENT,
 				startsAt,
@@ -463,7 +517,7 @@ class BookingManagementApiIntegrationTests {
 						.with(SecurityMockMvcRequestPostProcessors.user("manager").roles("OWNER"))
 						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(json(Map.of("startsAt", Instant.now().plusSeconds(3600)))))
+						.content(json(Map.of("startsAt", upcomingQuarterHour(1)))))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("CONFIRMED"));
 	}
@@ -471,7 +525,7 @@ class BookingManagementApiIntegrationTests {
 	@Test
 	void conflictingConcurrentConfirmationsAllowExactlyOneWinner() throws Exception {
 		UUID serviceId = insertService();
-		Instant startsAt = Instant.now().plusSeconds(3600);
+		Instant startsAt = upcomingQuarterHour(1);
 		UUID first = insertBooking(serviceId, BookingMode.EXACT_APPOINTMENT, startsAt, null, null, 45);
 		UUID second = insertBooking(serviceId, BookingMode.EXACT_APPOINTMENT, startsAt, null, null, 45);
 		CountDownLatch ready = new CountDownLatch(2);
@@ -770,6 +824,12 @@ class BookingManagementApiIntegrationTests {
 				customerName,
 				phone,
 				45);
+	}
+
+	private static Instant upcomingQuarterHour(int hoursAhead) {
+		var local = Instant.now().atZone(SHOP_ZONE).plusHours(hoursAhead).withSecond(0).withNano(0);
+		int remainder = local.getMinute() % 15;
+		return local.plusMinutes(remainder == 0 ? 0 : 15 - remainder).toInstant();
 	}
 
 	private UUID insertBooking(

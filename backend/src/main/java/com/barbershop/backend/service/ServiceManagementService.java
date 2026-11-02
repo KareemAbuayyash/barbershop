@@ -33,6 +33,14 @@ public class ServiceManagementService {
 				.toList();
 	}
 
+	@Transactional
+	public int archiveAllActiveServices() {
+		List<ServiceEntity> activeServices = serviceRepository.findAllByActiveTrueOrderByNameAsc();
+		activeServices.forEach(service -> service.setActive(false));
+		serviceRepository.saveAll(activeServices);
+		return activeServices.size();
+	}
+
 	public ServiceResponse findActiveService(UUID id) {
 		return serviceRepository.findByIdAndActiveTrue(id)
 				.map(ServiceManagementService::toResponse)

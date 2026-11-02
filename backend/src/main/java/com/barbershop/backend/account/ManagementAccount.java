@@ -86,4 +86,12 @@ public class ManagementAccount {
 	public boolean isEnabled() {
 		return enabled;
 	}
+
+	public void setUsernameNormalized(String usernameNormalized) {
+		this.usernameNormalized = usernameNormalized;
+	}
+
+	public void setPasswordHash(String passwordHash) {
+		this.passwordHash = passwordHash;
+	}
 }

@@ -40,6 +40,11 @@ public class ServiceController {
 		return serviceManagementService.findAllServices();
 	}
 
+	@PatchMapping("/archive")
+	public int archiveAllActiveServices() {
+		return serviceManagementService.archiveAllActiveServices();
+	}
+
 	@GetMapping("/{id}")
 	public ServiceResponse getActiveService(@PathVariable UUID id) {
 		return serviceManagementService.findActiveService(id);

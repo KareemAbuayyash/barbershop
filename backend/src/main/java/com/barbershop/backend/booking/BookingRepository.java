@@ -27,17 +27,29 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 	@Query("""
 			select booking
 			from Booking booking
+			left join booking.customer customer
+			left join booking.customerAccount account
 			where (:filterStatus = false or booking.status = :status)
-			      and (:filterMode = false or booking.bookingMode = :mode)
+			  and (:filterMode = false or booking.bookingMode = :mode)
+			  and (:queueOnly = false or booking.bookingMode in :queueModes)
+			  and (:filterQuery = false
+			       or lower(coalesce(customer.name, account.displayName, ''))
+			          like :searchPattern
+			       or replace(replace(replace(replace(coalesce(customer.phoneNumber, account.phoneNumber, ''), ' ', ''), '-', ''), '(', ''), ')', '')
+			          like :phonePattern)
+			  and (:filterDate = false
+			       or booking.queueDate = :date
+			       or (booking.queueDate is null
+			           and booking.startsAt >= :dayStart
+			           and booking.startsAt < :nextDayStart))
 			  and (
-			          :filterDate = false
-			      or booking.queueDate = :date
-			      or (
-			          booking.queueDate is null
-			          and booking.startsAt >= :dayStart
-			          and booking.startsAt < :nextDayStart
-			      )
+			      :filterFromDate = false
+			      or booking.queueDate >= :fromDate
+			      or (booking.queueDate is null and booking.startsAt >= :fromDayStart)
 			  )
+			  and (:filterToDate = false
+			       or booking.queueDate <= :toDate
+			       or (booking.queueDate is null and booking.startsAt < :dayAfterToStart))
 			order by
 			  case when :filterDate = true and booking.queueDate = :date
 			       then booking.queuePosition else null end,
@@ -51,10 +63,21 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 			@Param("status") BookingStatus status,
 			@Param("filterMode") boolean filterMode,
 			@Param("mode") BookingMode mode,
+			@Param("queueOnly") boolean queueOnly,
+			@Param("queueModes") List<BookingMode> queueModes,
+			@Param("filterQuery") boolean filterQuery,
+			@Param("searchPattern") String searchPattern,
+			@Param("phonePattern") String phonePattern,
 			@Param("filterDate") boolean filterDate,
 			@Param("date") LocalDate date,
 			@Param("dayStart") Instant dayStart,
 			@Param("nextDayStart") Instant nextDayStart,
+			@Param("filterFromDate") boolean filterFromDate,
+			@Param("fromDate") LocalDate fromDate,
+			@Param("fromDayStart") Instant fromDayStart,
+			@Param("filterToDate") boolean filterToDate,
+			@Param("toDate") LocalDate toDate,
+			@Param("dayAfterToStart") Instant dayAfterToStart,
 			Pageable pageable);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)

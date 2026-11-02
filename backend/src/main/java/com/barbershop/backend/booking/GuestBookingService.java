@@ -42,6 +42,7 @@ public class GuestBookingService {
 	private final JdbcTemplate jdbcTemplate;
 	private final ObjectMapper objectMapper;
 	private final RateLimitService rateLimitService;
+	private final ShopScheduleService shopScheduleService;
 
 	public GuestBookingService(
 			BookingRepository bookingRepository,
@@ -51,7 +52,8 @@ public class GuestBookingService {
 			ServiceRepository serviceRepository,
 			JdbcTemplate jdbcTemplate,
 			ObjectMapper objectMapper,
-			RateLimitService rateLimitService) {
+			RateLimitService rateLimitService,
+			ShopScheduleService shopScheduleService) {
 		this.bookingRepository = bookingRepository;
 		this.bookingSettingsRepository = bookingSettingsRepository;
 		this.customerRepository = customerRepository;
@@ -60,6 +62,7 @@ public class GuestBookingService {
 		this.jdbcTemplate = jdbcTemplate;
 		this.objectMapper = objectMapper;
 		this.rateLimitService = rateLimitService;
+		this.shopScheduleService = shopScheduleService;
 	}
 
 	@Transactional
@@ -92,10 +95,16 @@ public class GuestBookingService {
 						HttpStatus.NOT_FOUND,
 						"Service not found",
 						"The selected service is not available."));
+		if (validated.mode() == BookingMode.EXACT_APPOINTMENT) {
+			shopScheduleService.requireAppointmentTime(
+					validated.startsAt(), service.getDurationMinutes(), null);
+		} else if (validated.queueDate() != null) {
+			shopScheduleService.requireOpenQueueDate(validated.queueDate());
+		}
 		CustomerEntity customer = customerRepository.saveAndFlush(
 				new CustomerEntity(validated.customerName(), validated.customerPhone()));
 		CustomerAccount customerAccount = customerUsername == null
-				? null
+				|| validated.bookForSomeoneElse() ? null
 				: customerAccountRepository.findByUsernameNormalized(customerUsername)
 						.orElseThrow(() -> new IllegalStateException("Authenticated customer account no longer exists."));
 
@@ -194,7 +203,8 @@ public class GuestBookingService {
 				phone,
 				startsAt,
 				queueDate,
-				request.notes());
+				request.notes(),
+				request.bookForSomeoneElse());
 	}
 
 	private void requireFutureStart(Instant startsAt) {
@@ -299,7 +309,8 @@ public class GuestBookingService {
 					request.customerPhone() == null ? "" : request.customerPhone(),
 					request.startsAt() == null ? "" : request.startsAt().toString(),
 					request.queueDate() == null ? "" : request.queueDate().toString(),
-					request.notes() == null ? "" : request.notes()));
+					request.notes() == null ? "" : request.notes(),
+					request.bookForSomeoneElse()));
 			return MessageDigest.getInstance("SHA-256").digest(canonical);
 		} catch (JacksonException exception) {
 			throw new IllegalStateException("Validated booking request could not be fingerprinted.", exception);
@@ -330,6 +341,7 @@ public class GuestBookingService {
 			String customerPhone,
 			Instant startsAt,
 			LocalDate queueDate,
-			String notes) {
+			String notes,
+			boolean bookForSomeoneElse) {
 	}
 }
