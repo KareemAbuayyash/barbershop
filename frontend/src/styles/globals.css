@@ -2976,6 +2976,20 @@ button {
   gap: 14px;
 }
 
+.admin-manual-debt-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-block: 16px 22px;
+  padding: 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.admin-manual-debt-form h3,
+.admin-manual-debt-form .admin-primary-button {
+  grid-column: 1 / -1;
+}
+
 .admin-form textarea,
 .admin-settings-section textarea {
   min-height: 86px;
@@ -3129,11 +3143,28 @@ button {
   min-width: 0;
 }
 
+.admin-add-debt-trigger {
+  min-height: 34px;
+  margin-block: 10px 16px;
+  padding-inline: 11px;
+  font-size: 11px;
+}
+
 .admin-debt-row {
   grid-template-columns: minmax(120px, 1fr) minmax(100px, 0.7fr) minmax(240px, 1.5fr);
 }
 
 .admin-debt-actions { display: grid; gap: 8px; }
+.admin-debt-action-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.admin-debt-detail-trigger {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+}
 .admin-debt-reminder {
   display: inline-flex;
   width: fit-content;
@@ -3145,8 +3176,11 @@ button {
   border-radius: 6px;
   color: #a8ddb8;
   font-size: 11px;
+  background: transparent;
+  cursor: pointer;
 }
 .admin-debt-reminder:hover { border-color: #55be7d; background: rgba(85, 190, 125, 0.08); }
+.admin-debt-reminder:disabled { cursor: wait; opacity: 0.65; }
 .admin-debt-no-phone { color: var(--color-muted); font-size: 11px; }
 
 .admin-debt-payment {
@@ -3621,6 +3655,15 @@ button {
 
   .admin-debt-row {
     grid-template-columns: 1fr;
+  }
+
+  .admin-manual-debt-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-manual-debt-form h3,
+  .admin-manual-debt-form .admin-primary-button {
+    grid-column: auto;
   }
 
   .admin-payment-form,

@@ -24,6 +24,9 @@ export interface AdminCustomerDetails {
     id: string
     serviceName: string
     servicePrice: number
+    totalAmount: number
+    paidAmount: number
+    outstandingBalance: number
     status: BookingStatus
     createdAt: string
     products: Array<{
@@ -35,6 +38,21 @@ export interface AdminCustomerDetails {
     }>
   }>
   payments: AdminPayment[]
+  manualDebts: Array<{
+    id: string
+    description: string
+    totalAmount: number
+    paidAmount: number
+    outstandingBalance: number
+    createdAt: string
+    payments: Array<{
+      id: string
+      amount: number
+      method: string
+      notes: string | null
+      paidAt: string
+    }>
+  }>
   accounts: Array<{
     id: string
     username: string

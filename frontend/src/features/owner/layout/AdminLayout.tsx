@@ -14,7 +14,6 @@ import {
   Settings,
   ShoppingBasket,
   Users,
-  Wallet,
   X,
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
@@ -34,9 +33,8 @@ const navigationSections = [
   {
     title: 'الإدارة المالية',
     links: [
-      { label: 'الحسابات', to: '/owner/accounts', icon: CircleDollarSign },
+      { label: 'الحسابات والديون', to: '/owner/accounts', icon: CircleDollarSign },
       { label: 'المدفوعات', to: '/owner/payments', icon: CreditCard },
-      { label: 'الديون', to: '/owner/debts', icon: Wallet },
       { label: 'المصروفات', to: '/owner/expenses', icon: ShoppingBasket },
       { label: 'الأرباح والتقارير', to: '/owner/reports', icon: ChartNoAxesCombined },
     ],
@@ -58,9 +56,8 @@ const pageTitles: Record<string, string> = {
   '/owner/customers': 'العملاء',
   '/owner/services': 'الخدمات',
   '/owner/queue': 'قائمة الانتظار',
-  '/owner/accounts': 'حسابات العملاء',
+  '/owner/accounts': 'الحسابات والديون',
   '/owner/payments': 'المدفوعات',
-  '/owner/debts': 'الديون',
   '/owner/expenses': 'المصروفات',
   '/owner/reports': 'الأرباح والتقارير',
   '/owner/inventory': 'المخزون',

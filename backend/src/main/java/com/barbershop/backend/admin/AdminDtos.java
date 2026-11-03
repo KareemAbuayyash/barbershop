@@ -47,6 +47,9 @@ public final class AdminDtos {
 			UUID id,
 			String serviceName,
 			BigDecimal servicePrice,
+			BigDecimal totalAmount,
+			BigDecimal paidAmount,
+			BigDecimal outstandingBalance,
 			String status,
 			Instant createdAt,
 			List<RetailItem> products) {
@@ -74,7 +77,33 @@ public final class AdminDtos {
 			CustomerSummary customer,
 			List<CustomerBooking> bookings,
 			List<Payment> payments,
-			List<CustomerAccountSummary> accounts) {
+			List<CustomerAccountSummary> accounts,
+			List<ManualCustomerDebt> manualDebts) {
+	}
+
+	public record ManualCustomerDebt(
+			UUID id,
+			String description,
+			BigDecimal totalAmount,
+			BigDecimal paidAmount,
+			BigDecimal outstandingBalance,
+			Instant createdAt,
+			List<ManualDebtPayment> payments) {
+	}
+
+	public record ManualDebtPayment(
+			UUID id,
+			BigDecimal amount,
+			String method,
+			String notes,
+			Instant paidAt) {
+	}
+
+	public record ManualDebtRequest(
+			@NotBlank @Size(max = 150) String customerName,
+			@NotBlank @Size(max = 32) String phoneNumber,
+			@NotBlank @Size(max = 500) String description,
+			@NotNull @DecimalMin(value = "0.01") BigDecimal amount) {
 	}
 
 	public record CustomerAccountSummary(UUID id, String username, String displayName, String phoneNumber) {

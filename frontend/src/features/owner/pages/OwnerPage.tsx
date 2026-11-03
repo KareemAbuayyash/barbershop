@@ -24,7 +24,7 @@ const cards: Array<{
   { key: 'pendingBookings', label: 'بانتظار التأكيد', icon: ArrowDownLeft, to: '/owner/bookings?status=PENDING' },
   { key: 'activeCustomers', label: 'العملاء', icon: Users, to: '/owner/customers' },
   { key: 'collectedToday', label: 'المتحصل اليوم (₪)', icon: ArrowUpLeft, to: '/owner/payments', money: true },
-  { key: 'outstandingDebt', label: 'الديون المستحقة (₪)', icon: CircleDollarSign, to: '/owner/debts', money: true },
+  { key: 'outstandingDebt', label: 'الديون المستحقة (₪)', icon: CircleDollarSign, to: '/owner/accounts', money: true },
   { key: 'lowStockProducts', label: 'تنبيهات المخزون', icon: Package, to: '/owner/inventory' },
 ]
 

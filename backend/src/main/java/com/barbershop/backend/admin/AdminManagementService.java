@@ -51,6 +51,9 @@ import com.barbershop.backend.admin.AdminDtos.Notification;
 import com.barbershop.backend.admin.AdminDtos.PageResponse;
 import com.barbershop.backend.admin.AdminDtos.Payment;
 import com.barbershop.backend.admin.AdminDtos.PaymentRequest;
+import com.barbershop.backend.admin.AdminDtos.ManualCustomerDebt;
+import com.barbershop.backend.admin.AdminDtos.ManualDebtPayment;
+import com.barbershop.backend.admin.AdminDtos.ManualDebtRequest;
 import com.barbershop.backend.admin.AdminDtos.Product;
 import com.barbershop.backend.admin.AdminDtos.ProductImage;
 import com.barbershop.backend.admin.AdminDtos.ProductRequest;
@@ -76,15 +79,28 @@ public class AdminManagementService {
 			    FROM customers c
 			    WHERE EXISTS (SELECT 1 FROM bookings b WHERE b.customer_id = c.id AND b.customer_account_id IS NULL)
 			),
-			customer_groups AS (
-			    SELECT 'account:' || a.id::text AS group_key, a.id,
-			           a.display_name AS name, a.phone_number, TRUE AS has_account
+			customer_keys AS (
+			    SELECT 'account:' || a.id::text AS group_key, a.id, a.display_name AS name,
+			           a.phone_number, TRUE AS has_account, 0 AS priority
 			    FROM customer_accounts a
 			    UNION ALL
-			    SELECT gc.group_key, (array_agg(gc.id ORDER BY gc.id))[1] AS id,
-			           max(gc.name) AS name, max(gc.phone_number) AS phone_number, FALSE AS has_account
+			    SELECT gc.group_key, gc.id, gc.name, gc.phone_number, FALSE, 1
 			    FROM guest_customers gc
-			    GROUP BY gc.group_key
+			    UNION ALL
+			    SELECT CASE WHEN md.customer_account_id IS NOT NULL THEN 'account:' || md.customer_account_id::text
+			                WHEN regexp_replace(coalesce(md.phone_number, ''), '[^0-9]', '', 'g') <> ''
+			                THEN 'guest:phone:' || regexp_replace(md.phone_number, '[^0-9]', '', 'g')
+			                ELSE 'manual:id:' || md.id::text END,
+			           md.id, md.customer_name, md.phone_number, md.customer_account_id IS NOT NULL, 2
+			    FROM manual_customer_debts md
+			),
+			customer_groups AS (
+			    SELECT group_key, (array_agg(id ORDER BY priority, id))[1] AS id,
+			           (array_agg(name ORDER BY priority, id))[1] AS name,
+			           (array_agg(phone_number ORDER BY priority, id))[1] AS phone_number,
+			           bool_or(has_account) AS has_account
+			    FROM customer_keys
+			    GROUP BY group_key
 			),
 			booking_identities AS (
 			    SELECT b.id AS booking_id,
@@ -99,12 +115,23 @@ public class AdminManagementService {
 			    FROM booking_identities bi JOIN bookings b ON b.id = bi.booking_id
 			    GROUP BY bi.group_key
 			),
-			payment_totals AS (
-			    SELECT bi.group_key, coalesce(sum(p.amount), 0) AS total_paid
+			payment_components AS (
+			    SELECT bi.group_key, sum(p.amount) AS total_paid
 			    FROM booking_identities bi JOIN booking_payments p ON p.booking_id = bi.booking_id
 			    GROUP BY bi.group_key
+			    UNION ALL
+			    SELECT CASE WHEN md.customer_account_id IS NOT NULL THEN 'account:' || md.customer_account_id::text
+			                WHEN regexp_replace(coalesce(md.phone_number, ''), '[^0-9]', '', 'g') <> ''
+			                THEN 'guest:phone:' || regexp_replace(md.phone_number, '[^0-9]', '', 'g')
+			                ELSE 'manual:id:' || md.id::text END, sum(mp.amount)
+			    FROM manual_customer_debt_payments mp JOIN manual_customer_debts md ON md.id = mp.manual_debt_id
+			    GROUP BY 1
 			),
-			debt_totals AS (
+			payment_totals AS (
+			    SELECT group_key, sum(total_paid) AS total_paid
+			    FROM payment_components GROUP BY group_key
+			),
+			debt_components AS (
 			    SELECT bi.group_key,
 			           coalesce(sum(GREATEST(
 			               b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(bp.paid, 0), 0)), 0) AS debt
@@ -115,6 +142,20 @@ public class AdminManagementService {
 			    LEFT JOIN (SELECT booking_id, sum(line_total) AS retail_total
 			               FROM booking_retail_items GROUP BY booking_id) ri ON ri.booking_id = b.id
 			    GROUP BY bi.group_key
+			    UNION ALL
+			    SELECT CASE WHEN md.customer_account_id IS NOT NULL THEN 'account:' || md.customer_account_id::text
+			                WHEN regexp_replace(coalesce(md.phone_number, ''), '[^0-9]', '', 'g') <> ''
+			                THEN 'guest:phone:' || regexp_replace(md.phone_number, '[^0-9]', '', 'g')
+			                ELSE 'manual:id:' || md.id::text END,
+			           sum(GREATEST(md.total_amount - coalesce(mp.paid, 0), 0))
+			    FROM manual_customer_debts md
+			    LEFT JOIN (SELECT manual_debt_id, sum(amount) paid
+			               FROM manual_customer_debt_payments GROUP BY manual_debt_id) mp ON mp.manual_debt_id = md.id
+			    GROUP BY 1
+			),
+			debt_totals AS (
+			    SELECT group_key, sum(debt) AS debt
+			    FROM debt_components GROUP BY group_key
 			)
 			""";
 
@@ -160,18 +201,20 @@ public class AdminManagementService {
 				WHERE queue_date = ? OR (queue_date IS NULL AND starts_at >= ? AND starts_at < ?)
 				""", Long.class, today, start(today), start(today.plusDays(1)));
 		long customers = scalarLong("SELECT count(DISTINCT coalesce(nullif(regexp_replace(phone_number, '[^0-9]', '', 'g'), ''), id::text)) FROM customers");
-		BigDecimal collected = scalarMoney("SELECT coalesce(sum(amount), 0) FROM booking_payments WHERE paid_at >= ? AND paid_at < ?",
-				start(today), start(today.plusDays(1)));
+		BigDecimal collected = scalarMoney("""
+				SELECT coalesce((SELECT sum(amount) FROM booking_payments WHERE paid_at >= ? AND paid_at < ?), 0)
+				     + coalesce((SELECT sum(amount) FROM manual_customer_debt_payments WHERE paid_at >= ? AND paid_at < ?), 0)
+				""", start(today), start(today.plusDays(1)), start(today), start(today.plusDays(1)));
 		BigDecimal debt = scalarMoney("""
-				SELECT coalesce(sum(GREATEST(
-				    b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0), 0)), 0)
-				FROM bookings b LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
-				  ON p.booking_id = b.id
-				LEFT JOIN (
-				    SELECT booking_id, sum(line_total) retail_total
-				    FROM booking_retail_items GROUP BY booking_id
-				) ri ON ri.booking_id = b.id
-				WHERE b.status = 'COMPLETED'
+				SELECT coalesce((SELECT sum(GREATEST(
+				    b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0), 0))
+				    FROM bookings b LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
+				      ON p.booking_id = b.id
+				    LEFT JOIN (SELECT booking_id, sum(line_total) retail_total FROM booking_retail_items GROUP BY booking_id) ri
+				      ON ri.booking_id = b.id WHERE b.status = 'COMPLETED'), 0)
+				     + coalesce((SELECT sum(GREATEST(md.total_amount - coalesce(mp.paid, 0), 0))
+				       FROM manual_customer_debts md LEFT JOIN (SELECT manual_debt_id, sum(amount) paid
+				         FROM manual_customer_debt_payments GROUP BY manual_debt_id) mp ON mp.manual_debt_id = md.id), 0)
 				""");
 		long lowStock = scalarLong("SELECT count(*) FROM inventory_products WHERE active AND quantity <= low_stock_threshold");
 		return new DashboardResponse(pending, todayBookings, customers, collected, debt, lowStock);
@@ -269,8 +312,13 @@ public class AdminManagementService {
 				.add(new RetailItem(rs.getString("product_name_snapshot"), rs.getString("product_unit_snapshot"),
 						rs.getBigDecimal("quantity"), rs.getBigDecimal("unit_price"), rs.getBigDecimal("line_total"))), groupKey);
 		List<CustomerBooking> bookings = jdbc.query("""
-				SELECT b.id, b.service_name_snapshot, b.service_price_snapshot, b.status, b.created_at
+				SELECT b.id, b.service_name_snapshot, b.service_price_snapshot, b.status, b.created_at,
+				       b.service_price_snapshot + coalesce(ri.retail_total, 0) AS total_amount,
+				       coalesce(p.paid, 0) AS paid_amount,
+				       greatest(b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0), 0) AS balance
 				FROM bookings b JOIN customers c ON c.id = b.customer_id
+				LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p ON p.booking_id = b.id
+				LEFT JOIN (SELECT booking_id, sum(line_total) retail_total FROM booking_retail_items GROUP BY booking_id) ri ON ri.booking_id = b.id
 				WHERE CASE WHEN b.customer_account_id IS NOT NULL THEN 'account:' || b.customer_account_id::text
 				           WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
 				           THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
@@ -282,6 +330,9 @@ public class AdminManagementService {
 							bookingId,
 							rs.getString("service_name_snapshot"),
 							rs.getBigDecimal("service_price_snapshot"),
+							rs.getBigDecimal("total_amount"),
+							rs.getBigDecimal("paid_amount"),
+							rs.getBigDecimal("balance"),
 							rs.getString("status"),
 							rs.getTimestamp("created_at").toInstant(),
 							retailItemsByBooking.getOrDefault(bookingId, List.of()));
@@ -295,7 +346,33 @@ public class AdminManagementService {
 				""", (rs, row) -> new CustomerAccountSummary(
 						rs.getObject("id", UUID.class), rs.getString("username_normalized"),
 						rs.getString("display_name"), rs.getString("phone_number")), groupKey);
-		return new CustomerDetails(summary, bookings, payments, accounts);
+		List<ManualCustomerDebt> manualDebts = jdbc.query("""
+				SELECT md.id, md.description, md.total_amount,
+				       coalesce(mp.paid, 0) AS paid_amount,
+				       greatest(md.total_amount - coalesce(mp.paid, 0), 0) AS balance,
+				       md.created_at
+				FROM manual_customer_debts md
+				LEFT JOIN (SELECT manual_debt_id, sum(amount) paid FROM manual_customer_debt_payments GROUP BY manual_debt_id) mp
+				  ON mp.manual_debt_id = md.id
+				WHERE CASE WHEN md.customer_account_id IS NOT NULL THEN 'account:' || md.customer_account_id::text
+				           WHEN regexp_replace(coalesce(md.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(md.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'manual:id:' || md.id::text END = ?
+				ORDER BY md.created_at, md.id
+				""", (rs, row) -> {
+			UUID debtId = rs.getObject("id", UUID.class);
+			List<ManualDebtPayment> debtPayments = jdbc.query("""
+					SELECT id, amount, method, notes, paid_at
+					FROM manual_customer_debt_payments WHERE manual_debt_id = ? ORDER BY paid_at, id
+					""", (paymentRs, paymentRow) -> new ManualDebtPayment(
+						paymentRs.getObject("id", UUID.class), paymentRs.getBigDecimal("amount"),
+						paymentRs.getString("method"), paymentRs.getString("notes"),
+						paymentRs.getTimestamp("paid_at").toInstant()), debtId);
+			return new ManualCustomerDebt(debtId, rs.getString("description"), rs.getBigDecimal("total_amount"),
+					rs.getBigDecimal("paid_amount"), rs.getBigDecimal("balance"),
+					rs.getTimestamp("created_at").toInstant(), debtPayments);
+		}, groupKey);
+		return new CustomerDetails(summary, bookings, payments, accounts, manualDebts);
 	}
 
 	@Transactional
@@ -307,6 +384,13 @@ public class AdminManagementService {
 		jdbc.update("""
 				UPDATE customer_accounts SET display_name = ?, phone_number = ?, updated_at = CURRENT_TIMESTAMP
 				WHERE 'account:' || id::text = ?
+				""", name, phone == null ? "" : phone, groupKey);
+		jdbc.update("""
+				UPDATE manual_customer_debts SET customer_name = ?, phone_number = ?
+				WHERE CASE WHEN customer_account_id IS NOT NULL THEN 'account:' || customer_account_id::text
+				           WHEN regexp_replace(coalesce(phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(phone_number, '[^0-9]', '', 'g')
+				           ELSE 'manual:id:' || id::text END = ?
 				""", name, phone == null ? "" : phone, groupKey);
 		jdbc.update("""
 				UPDATE customers SET name = ?, phone_number = ?
@@ -338,18 +422,32 @@ public class AdminManagementService {
 	public List<Payment> payments(LocalDate fromDate, LocalDate toDate) {
 		validateDateRange(fromDate, toDate);
 		return jdbc.query("""
-				SELECT p.id, p.booking_id, c.name customer_name, p.amount, p.method, p.notes, p.paid_at
-				FROM booking_payments p JOIN customers c ON c.id = p.customer_id
-				WHERE (? IS NULL OR p.paid_at >= ?)
-				  AND (? IS NULL OR p.paid_at < ?)
-				ORDER BY p.paid_at DESC LIMIT 1000
+				SELECT * FROM (
+				    SELECT p.id, p.booking_id, c.name customer_name, p.amount, p.method, p.notes, p.paid_at
+				    FROM booking_payments p JOIN customers c ON c.id = p.customer_id
+				    WHERE (? IS NULL OR p.paid_at >= ?)
+				      AND (? IS NULL OR p.paid_at < ?)
+				    UNION ALL
+				    SELECT p.id, p.manual_debt_id AS booking_id, d.customer_name, p.amount, p.method,
+				           coalesce(p.notes, 'دين يدوي: ' || d.description) AS notes, p.paid_at
+				    FROM manual_customer_debt_payments p JOIN manual_customer_debts d ON d.id = p.manual_debt_id
+				    WHERE (? IS NULL OR p.paid_at >= ?)
+				      AND (? IS NULL OR p.paid_at < ?)
+				) all_payments
+				ORDER BY paid_at DESC LIMIT 1000
 				""", PAYMENT_ROW,
+				fromDate, fromDate == null ? null : start(fromDate),
+				toDate, toDate == null ? null : start(toDate.plusDays(1)),
 				fromDate, fromDate == null ? null : start(fromDate),
 				toDate, toDate == null ? null : start(toDate.plusDays(1)));
 	}
 
 	@Transactional
 	public Payment recordPayment(UUID bookingId, PaymentRequest request) {
+		return recordPayment(bookingId, request, true);
+	}
+
+	private Payment recordPayment(UUID bookingId, PaymentRequest request, boolean notifyCustomer) {
 		requireChoice(request.method(), PAYMENT_METHODS, "Unsupported payment method.");
 		try {
 			return jdbc.queryForObject("""
@@ -377,7 +475,7 @@ public class AdminManagementService {
 						VALUES (?, ?, ?, ?, ?, ?)
 						""", paymentId, bookingId, customerId, request.amount(), request.method(),
 						trimToNull(request.notes()));
-				notificationService.notifyPaymentRecorded(paymentId);
+				notificationService.notifyPaymentRecorded(paymentId, notifyCustomer);
 				BigDecimal serviceBalance = serviceValue.subtract(previouslyPaid).max(BigDecimal.ZERO);
 				BigDecimal commissionableAmount = request.amount().min(serviceBalance);
 				if (employeeId != null && commissionableAmount.signum() > 0) {
@@ -399,6 +497,117 @@ public class AdminManagementService {
 		} catch (EmptyResultDataAccessException exception) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found.");
 		}
+	}
+
+	@Transactional
+	public void recordCustomerPayment(UUID customerId, String type, PaymentRequest request) {
+		requireChoice(request.method(), PAYMENT_METHODS, "Unsupported payment method.");
+		if (request.amount().scale() > 2) throw badRequest("Payment amount must have no more than two decimal places.");
+		String groupKey = customerGroupKey(customerId, type);
+		List<Map<String, Object>> dueBookings = jdbc.queryForList("""
+				SELECT b.id AS booking_id,
+				       b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0) AS balance
+				FROM bookings b JOIN customers c ON c.id = b.customer_id
+				LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
+				  ON p.booking_id = b.id
+				LEFT JOIN (SELECT booking_id, sum(line_total) retail_total
+				           FROM booking_retail_items GROUP BY booking_id) ri ON ri.booking_id = b.id
+				WHERE b.status = 'COMPLETED'
+				  AND CASE WHEN b.customer_account_id IS NOT NULL THEN 'account:' || b.customer_account_id::text
+				           WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'guest:id:' || c.id::text END = ?
+				  AND b.service_price_snapshot + coalesce(ri.retail_total, 0) > coalesce(p.paid, 0)
+				ORDER BY b.created_at, b.id
+				FOR UPDATE OF b
+				""", groupKey);
+		List<Map<String, Object>> dueManualDebts = jdbc.queryForList("""
+				SELECT md.id AS manual_debt_id, md.total_amount - coalesce(mp.paid, 0) AS balance
+				FROM manual_customer_debts md
+				LEFT JOIN (SELECT manual_debt_id, sum(amount) paid
+				           FROM manual_customer_debt_payments GROUP BY manual_debt_id) mp ON mp.manual_debt_id = md.id
+				WHERE CASE WHEN md.customer_account_id IS NOT NULL THEN 'account:' || md.customer_account_id::text
+				           WHEN regexp_replace(coalesce(md.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(md.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'manual:id:' || md.id::text END = ?
+				  AND md.total_amount > coalesce(mp.paid, 0)
+				ORDER BY md.created_at, md.id
+				FOR UPDATE OF md
+				""", groupKey);
+		BigDecimal totalBalance = dueBookings.stream()
+				.map(row -> (BigDecimal) row.get("balance"))
+				.reduce(BigDecimal.ZERO, BigDecimal::add)
+				.add(dueManualDebts.stream().map(row -> (BigDecimal) row.get("balance"))
+						.reduce(BigDecimal.ZERO, BigDecimal::add));
+		if (totalBalance.signum() <= 0 || request.amount().compareTo(totalBalance) > 0) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Payment exceeds the customer's outstanding balance.");
+		}
+
+		BigDecimal remaining = request.amount();
+		for (Map<String, Object> dueBooking : dueBookings) {
+			if (remaining.signum() <= 0) break;
+			BigDecimal allocated = remaining.min((BigDecimal) dueBooking.get("balance"));
+			UUID bookingId = (UUID) dueBooking.get("booking_id");
+			recordPayment(bookingId, new PaymentRequest(allocated, request.method(), request.notes()), false);
+			remaining = remaining.subtract(allocated);
+		}
+		for (Map<String, Object> dueManualDebt : dueManualDebts) {
+			if (remaining.signum() <= 0) break;
+			BigDecimal allocated = remaining.min((BigDecimal) dueManualDebt.get("balance"));
+			jdbc.update("""
+					INSERT INTO manual_customer_debt_payments (id, manual_debt_id, amount, method, notes)
+					VALUES (?, ?, ?, ?, ?)
+					""", UUID.randomUUID(), dueManualDebt.get("manual_debt_id"), allocated,
+					request.method(), trimToNull(request.notes()));
+			remaining = remaining.subtract(allocated);
+		}
+		BigDecimal remainingBalance = jdbc.queryForObject(CUSTOMER_GROUPS + """
+				SELECT coalesce(dt.debt, 0)
+				FROM customer_groups g LEFT JOIN debt_totals dt ON dt.group_key = g.group_key
+				WHERE g.group_key = ?
+				""", BigDecimal.class, groupKey);
+		UUID guestBookingId = null;
+		if (!"ACCOUNTS".equals(type)) {
+			guestBookingId = jdbc.query("""
+					SELECT b.id FROM bookings b JOIN customers c ON c.id = b.customer_id
+					WHERE b.customer_account_id IS NULL
+					  AND CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+					           THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+					           ELSE 'guest:id:' || c.id::text END = ?
+				ORDER BY b.created_at DESC LIMIT 1
+					""", (rs, row) -> rs.getObject("id", UUID.class), groupKey).stream().findFirst().orElse(null);
+		}
+		notificationService.notifyCustomerAggregatePayment(customerId,
+				guestBookingId,
+				request.amount(), remainingBalance == null ? BigDecimal.ZERO : remainingBalance);
+	}
+
+	@Transactional
+	public ManualCustomerDebt addManualCustomerDebt(ManualDebtRequest request, String actor) {
+		String name = request.customerName().trim();
+		String phone = request.phoneNumber().trim();
+		String digits = phone.replaceAll("[^0-9]", "");
+		if (name.length() < 2 || digits.isBlank()) throw badRequest("Enter a valid customer name and phone number.");
+		if (request.amount().scale() > 2) throw badRequest("Debt amount must have no more than two decimal places.");
+		UUID accountId = jdbc.query("""
+				SELECT id FROM customer_accounts
+				WHERE regexp_replace(coalesce(phone_number, ''), '[^0-9]', '', 'g') = ?
+				ORDER BY id LIMIT 1
+				""", (rs, row) -> rs.getObject("id", UUID.class), digits).stream().findFirst().orElse(null);
+		UUID debtId = UUID.randomUUID();
+		jdbc.update("""
+				INSERT INTO manual_customer_debts
+				    (id, customer_account_id, customer_name, phone_number, description, total_amount, created_by)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				""", debtId, accountId, name, phone, request.description().trim(), request.amount(), actor);
+		return jdbc.queryForObject("""
+				SELECT id, description, total_amount, 0::numeric AS paid_amount,
+				       total_amount AS balance, created_at
+				FROM manual_customer_debts WHERE id = ?
+				""", (rs, row) -> new ManualCustomerDebt(rs.getObject("id", UUID.class),
+					rs.getString("description"), rs.getBigDecimal("total_amount"), rs.getBigDecimal("paid_amount"),
+					rs.getBigDecimal("balance"), rs.getTimestamp("created_at").toInstant(), List.of()), debtId);
 	}
 
 	@Transactional
@@ -576,6 +785,60 @@ public class AdminManagementService {
 						rs.getBigDecimal("balance")), pattern, pattern);
 	}
 
+	@Transactional
+	public void sendDebtReminder(UUID customerId, String type) {
+		String groupKey = customerGroupKey(customerId, type);
+		BigDecimal totalBalance = jdbc.queryForObject(CUSTOMER_GROUPS + """
+				SELECT coalesce(dt.debt, 0)
+				FROM customer_groups g LEFT JOIN debt_totals dt ON dt.group_key = g.group_key
+				WHERE g.group_key = ?
+				""", BigDecimal.class, groupKey);
+		if (totalBalance == null || totalBalance.signum() <= 0) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "This customer has no outstanding balance.");
+		}
+		if ("ACCOUNTS".equals(type)) {
+			notificationService.notifyAccountDebtReminder(customerId, totalBalance);
+			return;
+		}
+		UUID bookingId = jdbc.query("""
+				SELECT b.id
+				FROM bookings b JOIN customers c ON c.id = b.customer_id
+				WHERE b.customer_account_id IS NULL
+				  AND CASE WHEN b.customer_account_id IS NOT NULL THEN 'account:' || b.customer_account_id::text
+				           WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'guest:id:' || c.id::text END = ?
+				ORDER BY b.created_at DESC, b.id DESC LIMIT 1
+				""", (rs, row) -> rs.getObject("id", UUID.class), groupKey).stream().findFirst().orElse(null);
+		if (bookingId == null) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"This customer has no registered account or guest booking for notifications.");
+		}
+		notificationService.notifyDebtReminder(bookingId, totalBalance);
+	}
+
+	@Transactional
+	public void sendDebtReminderForBooking(UUID bookingId) {
+		BigDecimal balance;
+		try {
+			balance = jdbc.queryForObject("""
+					SELECT b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0)
+					FROM bookings b
+					LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
+					  ON p.booking_id = b.id
+					LEFT JOIN (SELECT booking_id, sum(line_total) retail_total
+					           FROM booking_retail_items GROUP BY booking_id) ri ON ri.booking_id = b.id
+					WHERE b.id = ? AND b.status = 'COMPLETED'
+					""", BigDecimal.class, bookingId);
+		} catch (EmptyResultDataAccessException exception) {
+			throw notFound("Unpaid completed booking not found.");
+		}
+		if (balance == null || balance.signum() <= 0) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking has no outstanding balance.");
+		}
+		notificationService.notifyDebtReminder(bookingId, balance);
+	}
+
 	@Transactional(readOnly = true)
 	public List<Expense> expenses(LocalDate fromDate, LocalDate toDate) {
 		validateDateRange(fromDate, toDate);
@@ -625,23 +888,23 @@ public class AdminManagementService {
 		}
 		validateDateRange(fromDate, toDate);
 		BigDecimal revenue = scalarMoney("""
-				SELECT coalesce(sum(amount), 0) FROM booking_payments
-				WHERE paid_at >= ? AND paid_at < ?
-				""", start(fromDate), start(toDate.plusDays(1)));
+				SELECT coalesce((SELECT sum(amount) FROM booking_payments WHERE paid_at >= ? AND paid_at < ?), 0)
+				     + coalesce((SELECT sum(amount) FROM manual_customer_debt_payments WHERE paid_at >= ? AND paid_at < ?), 0)
+				""", start(fromDate), start(toDate.plusDays(1)), start(fromDate), start(toDate.plusDays(1)));
 		BigDecimal expenses = scalarMoney("""
 				SELECT coalesce(sum(amount), 0) FROM shop_expenses
 				WHERE expense_date >= ? AND expense_date <= ?
 				""", fromDate, toDate);
 		BigDecimal debt = scalarMoney("""
-				SELECT coalesce(sum(GREATEST(
-				    b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0), 0)), 0)
-				FROM bookings b LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
-				  ON p.booking_id = b.id
-				LEFT JOIN (
-				    SELECT booking_id, sum(line_total) retail_total
-				    FROM booking_retail_items GROUP BY booking_id
-				) ri ON ri.booking_id = b.id
-				WHERE b.status = 'COMPLETED'
+				SELECT coalesce((SELECT sum(GREATEST(
+				    b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(p.paid, 0), 0))
+				    FROM bookings b LEFT JOIN (SELECT booking_id, sum(amount) paid FROM booking_payments GROUP BY booking_id) p
+				      ON p.booking_id = b.id
+				    LEFT JOIN (SELECT booking_id, sum(line_total) retail_total FROM booking_retail_items GROUP BY booking_id) ri
+				      ON ri.booking_id = b.id WHERE b.status = 'COMPLETED'), 0)
+				     + coalesce((SELECT sum(GREATEST(md.total_amount - coalesce(mp.paid, 0), 0))
+				       FROM manual_customer_debts md LEFT JOIN (SELECT manual_debt_id, sum(amount) paid
+				         FROM manual_customer_debt_payments GROUP BY manual_debt_id) mp ON mp.manual_debt_id = md.id), 0)
 				""");
 		return new ReportResponse(fromDate, toDate, revenue, expenses, revenue.subtract(expenses), debt);
 	}
@@ -1155,11 +1418,17 @@ public class AdminManagementService {
 				    FROM customers c WHERE c.id = ? AND EXISTS (
 				        SELECT 1 FROM bookings b WHERE b.customer_id = c.id AND b.customer_account_id IS NULL
 				    )
+			    UNION ALL
+			    SELECT CASE WHEN md.customer_account_id IS NOT NULL THEN 'account:' || md.customer_account_id::text
+			                WHEN regexp_replace(coalesce(md.phone_number, ''), '[^0-9]', '', 'g') <> ''
+			                THEN 'guest:phone:' || regexp_replace(md.phone_number, '[^0-9]', '', 'g')
+			                ELSE 'manual:id:' || md.id::text END, 'GUESTS' AS customer_type
+			    FROM manual_customer_debts md WHERE md.id = ?
 				) customer_identity
 				WHERE (? IS NULL OR customer_type = ?)
 				ORDER BY CASE WHEN customer_type = 'ACCOUNTS' THEN 0 ELSE 1 END
 				LIMIT 1
-				""", id, id, type, type);
+			""", id, id, id, type, type);
 	}
 
 	private static <T> PageResponse<T> page(List<T> content, int page, int size, long total) {

@@ -27,6 +27,8 @@ import com.barbershop.backend.admin.AdminDtos.CustomerDetails;
 import com.barbershop.backend.admin.AdminDtos.CustomerPasswordRequest;
 import com.barbershop.backend.admin.AdminDtos.CustomerSummary;
 import com.barbershop.backend.admin.AdminDtos.CustomerUpdateRequest;
+import com.barbershop.backend.admin.AdminDtos.ManualDebtRequest;
+import com.barbershop.backend.admin.AdminDtos.ManualCustomerDebt;
 import com.barbershop.backend.admin.AdminDtos.BookingEmployeeRequest;
 import com.barbershop.backend.admin.AdminDtos.CheckoutRequest;
 import com.barbershop.backend.admin.AdminDtos.DashboardResponse;
@@ -133,6 +135,37 @@ public class AdminManagementController {
 	@GetMapping("/debts")
 	public List<AdminManagementService.DebtResponse> debts(@RequestParam(required = false) String q) {
 		return service.debts(q);
+	}
+
+	@PostMapping("/debts/{bookingId}/reminder")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void sendDebtReminder(@PathVariable UUID bookingId) {
+		service.sendDebtReminderForBooking(bookingId);
+	}
+
+	@PostMapping("/debts/customers/{customerId}/reminder")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void sendCustomerDebtReminder(
+			@PathVariable UUID customerId,
+			@RequestParam String type) {
+		service.sendDebtReminder(customerId, type);
+	}
+
+	@PostMapping("/debts/customers/{customerId}/payments")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void recordCustomerDebtPayment(
+			@PathVariable UUID customerId,
+			@RequestParam String type,
+			@Valid @RequestBody PaymentRequest request) {
+		service.recordCustomerPayment(customerId, type, request);
+	}
+
+	@PostMapping("/manual-debts")
+	@ResponseStatus(HttpStatus.CREATED)
+	public ManualCustomerDebt addManualDebt(
+			@Valid @RequestBody ManualDebtRequest request,
+			Authentication authentication) {
+		return service.addManualCustomerDebt(request, authentication.getName());
 	}
 
 	@PostMapping("/debts/{bookingId}/payments")

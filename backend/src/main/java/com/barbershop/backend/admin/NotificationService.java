@@ -155,6 +155,44 @@ public class NotificationService {
 	}
 
 	@Transactional
+	public void notifyDebtReminder(UUID bookingId, BigDecimal balance) {
+		if (bookingId == null || balance == null || balance.signum() <= 0) return;
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "debt-reminder:" + bookingId + ":" + UUID.randomUUID();
+		String body = "لديك مبلغ مستحق بقيمة " + balance.toPlainString() + " ₪ عن "
+				+ booking.serviceName() + ". يرجى تسديده عند زيارتك القادمة.";
+		notifyBookingCustomerOrGuest(booking, "PAYMENT_DUE", eventKey,
+				"تذكير بمبلغ مستحق", body, "/my-bookings");
+	}
+
+	@Transactional
+	public void notifyAccountDebtReminder(UUID accountId, BigDecimal balance) {
+		if (accountId == null || balance == null || balance.signum() <= 0) return;
+		String eventKey = "debt-reminder:" + accountId + ":" + UUID.randomUUID();
+		String body = "إجمالي المبلغ المستحق عليك " + balance.toPlainString()
+				+ " ₪. يرجى تسديده عند زيارتك القادمة.";
+		notifyCustomer(accountId, "PAYMENT_DUE", eventKey,
+				"تذكير بإجمالي المبلغ المستحق", body, "/my-bookings");
+	}
+
+	@Transactional
+	public void notifyCustomerAggregatePayment(
+			UUID accountId, UUID guestBookingId, BigDecimal paymentAmount, BigDecimal remainingBalance) {
+		if (paymentAmount == null || paymentAmount.signum() <= 0 || remainingBalance == null) return;
+		String eventType = remainingBalance.signum() == 0 ? "PAYMENT_SETTLED" : "PAYMENT_DUE";
+		String title = remainingBalance.signum() == 0 ? "تم تسديد المبلغ بالكامل" : "تم تسجيل دفعة جزئية";
+		String eventKey = "customer-payment:" + UUID.randomUUID();
+		String body = "تم استلام دفعة " + paymentAmount.toPlainString() + " ₪. إجمالي المتبقي عليك "
+				+ remainingBalance.toPlainString() + " ₪.";
+		if (accountId != null) {
+			notifyCustomer(accountId, eventType, eventKey, title, body, "/my-bookings");
+		} else if (guestBookingId != null) {
+			notifyGuest(guestBookingId, eventType, eventKey, title, body);
+		}
+	}
+
+	@Transactional
 	public void notifyBookingNote(UUID bookingId, String note) {
 		if (bookingId == null || note == null || note.isBlank()) return;
 		BookingNotificationDetails booking = findBookingNotification(bookingId);
@@ -316,12 +354,18 @@ public class NotificationService {
 	}
 
 	public void notifyPaymentRecorded(UUID paymentId) {
+		notifyPaymentRecorded(paymentId, true);
+	}
+
+	@Transactional
+	public void notifyPaymentRecorded(UUID paymentId, boolean notifyCustomer) {
 		PaymentNotificationDetails payment = findPaymentNotification(paymentId);
 		if (payment == null) return;
 		String eventKey = "payment:" + payment.id();
 		String body = payment.customerName() + " · " + payment.amount().toPlainString() + " ₪ · المتبقي "
 				+ payment.balance().toPlainString() + " ₪";
 		notifyOwner("PAYMENT", eventKey, "تم تسجيل دفعة مالية", body, "/owner/payments");
+		if (!notifyCustomer) return;
 		String customerEvent = payment.balance().signum() == 0 ? "PAYMENT_SETTLED" : "PAYMENT_DUE";
 		String customerTitle = payment.balance().signum() == 0 ? "تم تسديد الفاتورة بالكامل" : "تم تسجيل دفعتك";
 		String customerBody = "الخدمة: " + payment.serviceName() + " · المتبقي " + payment.balance().toPlainString() + " ₪";

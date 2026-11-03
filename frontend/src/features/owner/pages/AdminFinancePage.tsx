@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { BarChart3, CircleDollarSign, CreditCard, MessageCircle, Wallet } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { BarChart3, BellRing, CircleDollarSign, CreditCard, Eye, Plus, Wallet, X } from 'lucide-react'
 import { apiRequest, getErrorMessage, type BookingPage } from '../../../lib/api'
 import { getShopDate } from '../../../lib/shop-time'
 import type {
@@ -7,6 +8,7 @@ import type {
   AdminBestSellingService,
   AdminBookingSalesReport,
   AdminCustomer,
+  AdminCustomerDetails,
   AdminDebt,
   AdminExpense,
   AdminPayment,
@@ -15,7 +17,7 @@ import type {
 
 type Section = 'accounts' | 'payments' | 'debts' | 'expenses' | 'reports'
 type FinanceLoadResult =
-  | { section: 'accounts'; customers: AdminCustomer[]; debts: AdminDebt[] }
+  | { section: 'accounts'; customers: AdminCustomer[] }
   | { section: 'payments'; payments: AdminPayment[]; bookings: BookingPage['content']; debts: AdminDebt[] }
   | { section: 'debts'; debts: AdminDebt[] }
   | { section: 'expenses'; expenses: AdminExpense[] }
@@ -34,23 +36,8 @@ const methods = [
   { value: 'OTHER', label: 'أخرى' },
 ]
 
-function whatsappNumber(phoneNumber: string | null) {
-  const digits = phoneNumber?.replace(/\D/g, '') ?? ''
-  if (!digits) return null
-  if (digits.startsWith('00')) return digits.slice(2)
-  if (digits.startsWith('0')) return `970${digits.slice(1)}`
-  return digits
-}
-
-function debtReminderUrl(debt: AdminDebt) {
-  const phone = whatsappNumber(debt.phoneNumber)
-  if (!phone) return null
-  const message = `مرحباً ${debt.customerName}، نذكّرك بوجود مبلغ مستحق بقيمة ${debt.balance.toLocaleString('ar')} شيكل عن خدمة ${debt.serviceName} في BARBER HOUSE. يرجى تسديده عند زيارتك القادمة. شكراً لك.`
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
-}
-
 const labels: Record<Section, { eyebrow: string; title: string }> = {
-  accounts: { eyebrow: 'الأرصدة وسجل العملاء', title: 'الحسابات والذمم' },
+  accounts: { eyebrow: 'أرصدة العملاء والحجوزات غير المسددة', title: 'الحسابات والديون' },
   payments: { eyebrow: 'تسجيل الإيرادات المحصلة', title: 'المدفوعات' },
   debts: { eyebrow: 'مبالغ مستحقة على الحجوزات المكتملة', title: 'الديون' },
   expenses: { eyebrow: 'النفقات التشغيلية المسجلة', title: 'المصروفات' },
@@ -59,6 +46,8 @@ const labels: Record<Section, { eyebrow: string; title: string }> = {
 
 function AdminFinancePage({ section }: { section: Section }) {
   const [customers, setCustomers] = useState<AdminCustomer[]>([])
+  const [selectedCustomerDetails, setSelectedCustomerDetails] = useState<AdminCustomerDetails | null>(null)
+  const [addDebtOpen, setAddDebtOpen] = useState(false)
   const [debts, setDebts] = useState<AdminDebt[]>([])
   const [payments, setPayments] = useState<AdminPayment[]>([])
   const [expenses, setExpenses] = useState<AdminExpense[]>([])
@@ -72,6 +61,8 @@ function AdminFinancePage({ section }: { section: Section }) {
   const [toDate, setToDate] = useState(getShopDate())
   const [reportMonth, setReportMonth] = useState(getShopDate().slice(0, 7))
   const [busy, setBusy] = useState(false)
+  const [reminderBusyId, setReminderBusyId] = useState('')
+  const [customerPaymentBusyId, setCustomerPaymentBusyId] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
@@ -83,13 +74,8 @@ function AdminFinancePage({ section }: { section: Section }) {
       if (section === 'accounts') {
         const searchParams = new URLSearchParams({ page: '0', size: '100' })
         if (query.trim()) searchParams.set('q', query.trim())
-        const debtParams = new URLSearchParams()
-        if (query.trim()) debtParams.set('q', query.trim())
-        const [customerPage, unpaid] = await Promise.all([
-          apiRequest<{ content: AdminCustomer[] }>(`/api/admin/customers?${searchParams}`),
-          apiRequest<AdminDebt[]>(`/api/admin/debts?${debtParams}`),
-        ])
-        return { section, customers: customerPage.content, debts: unpaid }
+        const customerPage = await apiRequest<{ content: AdminCustomer[] }>(`/api/admin/customers?${searchParams}`)
+        return { section, customers: customerPage.content }
       } else if (section === 'payments') {
         const [paid, completed, unpaid] = await Promise.all([
           apiRequest<AdminPayment[]>(`/api/admin/payments?${params}`),
@@ -133,7 +119,6 @@ function AdminFinancePage({ section }: { section: Section }) {
       if (!active) return
       if (data.section === 'accounts') {
         setCustomers(data.customers)
-        setDebts(data.debts)
       } else if (data.section === 'payments') {
         setPayments(data.payments)
         setBookings(data.bookings)
@@ -178,6 +163,91 @@ function AdminFinancePage({ section }: { section: Section }) {
     }
   }
 
+  const sendCustomerDebtReminder = async (customerId: string, hasAccount: boolean) => {
+    setReminderBusyId(customerId)
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/api/admin/debts/customers/${customerId}/reminder?type=${hasAccount ? 'ACCOUNTS' : 'GUESTS'}`, {
+        method: 'POST',
+      })
+      setNotice('تم إرسال تذكير بإجمالي المبلغ المستحق عبر الإشعارات.')
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر إرسال التذكير.'))
+    } finally {
+      setReminderBusyId('')
+    }
+  }
+
+  const addManualDebt = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest('/api/admin/manual-debts', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerName: String(formData.get('customerName')).trim(),
+          phoneNumber: String(formData.get('phoneNumber')).trim(),
+          description: String(formData.get('description')).trim(),
+          amount: Number(formData.get('amount')),
+        }),
+      })
+      form.reset()
+      setAddDebtOpen(false)
+      setNotice('تمت إضافة الدين إلى حساب العميل.')
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر إضافة الدين.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const showCustomerDetails = async (customer: AdminCustomer) => {
+    setError('')
+    try {
+      const type = customer.hasAccount ? 'ACCOUNTS' : 'GUESTS'
+      const details = await apiRequest<AdminCustomerDetails>(
+        `/api/admin/customers/${customer.id}?type=${type}`,
+      )
+      setSelectedCustomerDetails(details)
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر تحميل تفاصيل حساب العميل.'))
+    }
+  }
+
+  const submitCustomerPayment = async (
+    event: FormEvent<HTMLFormElement>, customerId: string, hasAccount: boolean,
+  ) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    setCustomerPaymentBusyId(customerId)
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/api/admin/debts/customers/${customerId}/payments?type=${hasAccount ? 'ACCOUNTS' : 'GUESTS'}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: Number(formData.get('amount')),
+          method: String(formData.get('method')),
+          notes: formData.get('notes') ? String(formData.get('notes')).trim() || null : null,
+        }),
+      })
+      form.reset()
+      setNotice('تم تسجيل الدفعة وخصمها من إجمالي دين العميل.')
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر تسجيل الدفعة.'))
+    } finally {
+      setCustomerPaymentBusyId('')
+    }
+  }
+
   const createExpense = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = event.currentTarget
@@ -208,6 +278,11 @@ function AdminFinancePage({ section }: { section: Section }) {
   }
 
   const indebtedCustomers = customers.filter((customer) => customer.outstandingDebt > 0)
+  const totalCustomerDebt = indebtedCustomers.reduce((sum, customer) => sum + customer.outstandingDebt, 0)
+  const unpaidBookingDetails = selectedCustomerDetails?.bookings.filter(
+    (booking) => booking.status === 'COMPLETED' && booking.outstandingBalance > 0,
+  ) ?? []
+  const unpaidManualDebts = selectedCustomerDetails?.manualDebts.filter((debt) => debt.outstandingBalance > 0) ?? []
 
   return (
     <div className="admin-page">
@@ -242,17 +317,43 @@ function AdminFinancePage({ section }: { section: Section }) {
 
         {section === 'accounts' && (
           <>
+            <button className="admin-secondary-button admin-add-debt-trigger" type="button"
+              onClick={() => setAddDebtOpen(true)}><Plus size={15} /> إضافة دين يدوي</button>
             <div className="admin-summary-chips">
               <span>{customers.length.toLocaleString('ar')} عميل</span>
-              <span>{debts.length.toLocaleString('ar')} رصيد مستحق</span>
-              <span>إجمالي الدين {debts.reduce((sum, item) => sum + item.balance, 0).toLocaleString('ar')} ₪</span>
+              <span>{indebtedCustomers.length.toLocaleString('ar')} عميل عليه دين</span>
+              <span>إجمالي الديون {totalCustomerDebt.toLocaleString('ar')} ₪</span>
             </div>
             <div className="admin-finance-list">
               {indebtedCustomers.map((customer) => (
-                <article className="admin-finance-row" key={customer.id}>
-                  <div><strong>{customer.name}</strong><small dir="ltr">{customer.phoneNumber || '—'}</small></div>
-                  <span>{customer.visits.toLocaleString('ar')} زيارة</span>
-                  <strong className="admin-debt-value">{customer.outstandingDebt.toLocaleString('ar')} ₪</strong>
+                <article className="admin-debt-row" key={`${customer.hasAccount ? 'account' : 'guest'}-${customer.id}`}>
+                  <div><strong>{customer.name}</strong>
+                    <small>{customer.hasAccount ? 'حساب مسجل' : 'حجوزات ضيف'} · {customer.visits.toLocaleString('ar')} زيارة</small>
+                    <small dir="ltr">{customer.phoneNumber || '—'}</small></div>
+                  <strong className="admin-debt-value">إجمالي الدين {customer.outstandingDebt.toLocaleString('ar')} ₪</strong>
+                  <div className="admin-debt-actions">
+                    <div className="admin-debt-action-row">
+                      <button className="admin-debt-reminder" type="button"
+                        disabled={reminderBusyId === customer.id}
+                        onClick={() => void sendCustomerDebtReminder(customer.id, customer.hasAccount)}>
+                        <BellRing size={16} />
+                        {reminderBusyId === customer.id ? 'جارٍ الإرسال...' : 'تذكير بالإجمالي عبر الإشعار'}
+                      </button>
+                      <button className="admin-icon-button admin-debt-detail-trigger" type="button"
+                        aria-label={`عرض الحركات غير المسددة لـ ${customer.name}`} title="الحركات غير المسددة"
+                        onClick={() => void showCustomerDetails(customer)}><Eye size={16} /></button>
+                    </div>
+                    <form className="admin-debt-payment" onSubmit={(event) =>
+                      void submitCustomerPayment(event, customer.id, customer.hasAccount)}>
+                      <input name="amount" aria-label={`المبلغ المدفوع من ${customer.name}`} type="number"
+                        min="0.01" max={customer.outstandingDebt} step="0.01" placeholder="مبلغ الدفعة" required />
+                      <select name="method" aria-label="طريقة الدفع">{methods.map((method) =>
+                        <option key={method.value} value={method.value}>{method.label}</option>)}</select>
+                      <button className="admin-secondary-button" disabled={customerPaymentBusyId === customer.id}>
+                        {customerPaymentBusyId === customer.id ? 'جارٍ التسجيل...' : 'تسجيل دفعة'}
+                      </button>
+                    </form>
+                  </div>
                 </article>
               ))}
               {!indebtedCustomers.length
@@ -299,34 +400,6 @@ function AdminFinancePage({ section }: { section: Section }) {
               {!payments.length && <p className="admin-empty-inline">لا توجد دفعات في الفترة المحددة.</p>}
             </div>
           </>
-        )}
-
-        {section === 'debts' && (
-          <div className="admin-finance-list">
-            {debts.map((debt) => {
-              const reminderUrl = debtReminderUrl(debt)
-              return <article className="admin-debt-row" key={debt.bookingId}>
-                <div><strong>{debt.customerName}</strong><small>{debt.serviceName} · {debt.servicePrice.toLocaleString('ar')} ₪</small>
-                  {debt.phoneNumber && <small dir="ltr">{debt.phoneNumber}</small>}</div>
-                <strong className="admin-debt-value">المتبقي {debt.balance.toLocaleString('ar')} ₪</strong>
-                <div className="admin-debt-actions">
-                  {reminderUrl
-                    ? <a className="admin-debt-reminder" href={reminderUrl} target="_blank" rel="noreferrer">
-                        <MessageCircle size={16} /> تذكير بالدين عبر واتساب
-                      </a>
-                    : <span className="admin-debt-no-phone">أضف رقم هاتف لإرسال التذكير</span>}
-                  <form className="admin-debt-payment" onSubmit={(event) => void submitPayment(event, debt.bookingId, true)}>
-                    <input name="amount" aria-label="المبلغ المحصل" type="number" min="0.01" max={debt.balance}
-                      step="0.01" placeholder="المبلغ" required />
-                    <select name="method" aria-label="طريقة الدفع">{methods.map((method) =>
-                      <option key={method.value} value={method.value}>{method.label}</option>)}</select>
-                    <button className="admin-secondary-button" disabled={busy}>تسديد</button>
-                  </form>
-                </div>
-              </article>
-            })}
-            {!debts.length && <p className="admin-empty-inline">لا توجد ديون مستحقة.</p>}
-          </div>
         )}
 
         {section === 'expenses' && (
@@ -419,6 +492,96 @@ function AdminFinancePage({ section }: { section: Section }) {
           )
         )}
       </section>
+      {addDebtOpen && createPortal(
+        <div className="admin-booking-modal-backdrop admin-customer-modal-backdrop" role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setAddDebtOpen(false)
+          }}>
+          <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
+            aria-labelledby="add-manual-debt-title" dir="rtl">
+            <div className="admin-panel-heading">
+              <div><span className="admin-eyebrow">الحسابات والديون</span>
+                <h2 id="add-manual-debt-title">إضافة دين يدوي</h2></div>
+              <button className="admin-icon-button" type="button" aria-label="إغلاق"
+                onClick={() => setAddDebtOpen(false)}><X size={17} /></button>
+            </div>
+            <form className="admin-form admin-manual-debt-form" onSubmit={(event) => void addManualDebt(event)}>
+              <label>اسم العميل<input name="customerName" maxLength={150} required /></label>
+              <label>رقم الهاتف<input name="phoneNumber" type="tel" maxLength={32} required /></label>
+              <label>سبب الدين<input name="description" maxLength={500} placeholder="خدمة، منتج، أو سبب آخر" required /></label>
+              <label>المبلغ (₪)<input name="amount" type="number" min="0.01" step="0.01" required /></label>
+              <button className="admin-primary-button" disabled={busy}>
+                {busy ? 'جارٍ الحفظ...' : 'إضافة الدين'}
+              </button>
+            </form>
+          </section>
+        </div>,
+        document.body,
+      )}
+      {selectedCustomerDetails && createPortal(
+        <div className="admin-booking-modal-backdrop admin-customer-modal-backdrop" role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedCustomerDetails(null)
+          }}>
+          <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
+            aria-labelledby="finance-customer-details-title" dir="rtl">
+            <div className="admin-panel-heading">
+              <div><span className="admin-eyebrow">كشف الحساب</span>
+                <h2 id="finance-customer-details-title">{selectedCustomerDetails.customer.name}</h2></div>
+              <button className="admin-icon-button" type="button" aria-label="إغلاق"
+                onClick={() => setSelectedCustomerDetails(null)}><X size={17} /></button>
+            </div>
+            <p className="admin-contact-line" dir="ltr">{selectedCustomerDetails.customer.phoneNumber || '—'}</p>
+            <div className="admin-summary-chips">
+              <span>إجمالي المتبقي {selectedCustomerDetails.customer.outstandingDebt.toLocaleString('ar')} ₪</span>
+            </div>
+            <h3 className="admin-subheading">الحركات غير المسددة بالكامل</h3>
+            {unpaidBookingDetails.map((booking) => (
+              <article className="admin-customer-report-booking" key={booking.id}>
+                <div className="admin-history-row">
+                  <span>{booking.serviceName}</span><span>{booking.status}</span>
+                  <strong>الإجمالي {booking.totalAmount.toLocaleString('ar')} ₪</strong>
+                  <small>{new Date(booking.createdAt).toLocaleDateString('ar')}</small>
+                </div>
+                {booking.products.map((product, index) => (
+                  <p className="admin-customer-purchases" key={`${product.productName}-${index}`}>
+                    {product.productName} · {product.quantity.toLocaleString('ar')} {product.unit}
+                    {' · '}{product.lineTotal.toLocaleString('ar')} ₪
+                  </p>
+                ))}
+                <div className="admin-history-row">
+                  <span>المدفوع {booking.paidAmount.toLocaleString('ar')} ₪</span>
+                  <strong>المتبقي {booking.outstandingBalance.toLocaleString('ar')} ₪</strong>
+                </div>
+                {selectedCustomerDetails.payments.filter((payment) => payment.bookingId === booking.id).map((payment) => (
+                  <small className="admin-customer-purchases" key={payment.id}>
+                    دفعة {payment.amount.toLocaleString('ar')} ₪ · {payment.method}
+                    {payment.notes ? ` · ${payment.notes}` : ''}
+                  </small>
+                ))}
+              </article>
+            ))}
+            {unpaidManualDebts.map((debt) => (
+              <article className="admin-customer-report-booking" key={debt.id}>
+                <strong>دين يدوي · {debt.description}</strong>
+                <div className="admin-history-row">
+                  <span>المبلغ {debt.totalAmount.toLocaleString('ar')} ₪</span>
+                  <span>المدفوع {debt.paidAmount.toLocaleString('ar')} ₪</span>
+                  <strong>المتبقي {debt.outstandingBalance.toLocaleString('ar')} ₪</strong>
+                  <small>{new Date(debt.createdAt).toLocaleDateString('ar')}</small>
+                </div>
+                {debt.payments.map((payment) => <small className="admin-customer-purchases" key={payment.id}>
+                  دفعة {payment.amount.toLocaleString('ar')} ₪ · {payment.method}
+                  {payment.notes ? ` · ${payment.notes}` : ''}
+                </small>)}
+              </article>
+            ))}
+            {!unpaidBookingDetails.length && !unpaidManualDebts.length
+              && <p className="admin-state">لا توجد حركات عليها مبلغ متبقٍ.</p>}
+          </section>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
