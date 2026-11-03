@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { BarChart3, BellRing, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, CreditCard, Eye, History, Plus, Wallet, X } from 'lucide-react'
+import { BarChart3, BellRing, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, CreditCard, Eye, History, Pencil, Plus, Trash2, Wallet, X } from 'lucide-react'
 import { apiRequest, getErrorMessage } from '../../../lib/api'
 import { getShopDate } from '../../../lib/shop-time'
 import type {
@@ -41,27 +41,50 @@ const labels: Record<Section, { eyebrow: string; title: string }> = {
 
 const reportChartColors = ['#ddc794', '#a88b55', '#806b43', '#685b40', '#4c4838']
 
-function ReportDonut({ values, centerValue, centerLabel, label }: {
+function ReportDonut({ values, labels, centerValue, centerLabel, label, valueUnit }: {
   values: number[]
+  labels: string[]
   centerValue: string
   centerLabel: string
   label: string
+  valueUnit: string
 }) {
+  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null)
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const total = values.reduce((sum, value) => sum + Math.max(0, value), 0)
   return (
     <div className="admin-report-donut-wrap">
-      <svg className="admin-report-donut" viewBox="0 0 120 120" role="img" aria-label={label}>
+      <svg className="admin-report-donut" viewBox="0 0 120 120" role="img" aria-label={label}
+        onMouseMove={(event) => {
+          const bounds = event.currentTarget.getBoundingClientRect()
+          setTooltipPosition({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+        }}
+        onMouseLeave={() => setHoveredSegment(null)}>
         <circle cx="60" cy="60" r="43" className="admin-report-donut-track" />
         {total > 0 && values.map((value, index) => {
           const share = Math.max(0, value) / total * 100
           const offset = values.slice(0, index).reduce((sum, previous) => sum + Math.max(0, previous), 0) / total * 100
           return <circle key={index} cx="60" cy="60" r="43" pathLength="100"
             className="admin-report-donut-segment" stroke={reportChartColors[index % reportChartColors.length]}
-            strokeDasharray={`${share} ${100 - share}`} strokeDashoffset={-offset} />
+            strokeDasharray={`${share} ${100 - share}`} strokeDashoffset={-offset}
+            tabIndex={0} role="button"
+            aria-label={`${labels[index] ?? label}: ${value.toLocaleString('ar')} ${valueUnit}, ${share.toLocaleString('ar', { maximumFractionDigits: 1 })}٪`}
+            onMouseEnter={() => setHoveredSegment(index)}
+            onFocus={() => setHoveredSegment(index)} onBlur={() => setHoveredSegment(null)}
+            onClick={() => setHoveredSegment((current) => current === index ? null : index)}>
+            <title>{`${labels[index] ?? label}: ${value.toLocaleString('ar')} ${valueUnit} (${share.toLocaleString('ar', { maximumFractionDigits: 1 })}٪)`}</title>
+          </circle>
         })}
         <text x="60" y="56" className="admin-report-donut-value" textAnchor="middle" dominantBaseline="middle">{centerValue}</text>
         <text x="60" y="73" className="admin-report-donut-label" textAnchor="middle" dominantBaseline="middle">{centerLabel}</text>
       </svg>
+      {hoveredSegment !== null && values[hoveredSegment] !== undefined && <div className="admin-report-chart-tooltip"
+        style={{ left: tooltipPosition.x, top: tooltipPosition.y }} role="status">
+        <span className="admin-report-mix-swatch" style={{ backgroundColor: reportChartColors[hoveredSegment % reportChartColors.length] }} />
+        <strong>{labels[hoveredSegment] ?? label}</strong>
+        <span>{values[hoveredSegment].toLocaleString('ar')} {valueUnit}</span>
+        <small>{(Math.max(0, values[hoveredSegment]) / total * 100).toLocaleString('ar', { maximumFractionDigits: 1 })}٪</small>
+      </div>}
       <span>{label}</span>
     </div>
   )
@@ -71,6 +94,8 @@ function AdminFinancePage({ section }: { section: Section }) {
   const [customers, setCustomers] = useState<AdminCustomer[]>([])
   const [selectedCustomerDetails, setSelectedCustomerDetails] = useState<AdminCustomerDetails | null>(null)
   const [addDebtOpen, setAddDebtOpen] = useState(false)
+  const [expenseOpen, setExpenseOpen] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<AdminExpense | null>(null)
   const [payments, setPayments] = useState<AdminPayment[]>([])
   const [paymentsOpen, setPaymentsOpen] = useState(false)
   const [expenses, setExpenses] = useState<AdminExpense[]>([])
@@ -237,8 +262,8 @@ function AdminFinancePage({ section }: { section: Section }) {
     setError('')
     setNotice('')
     try {
-      await apiRequest('/api/admin/expenses', {
-        method: 'POST',
+      await apiRequest(editingExpense ? `/api/admin/expenses/${editingExpense.id}` : '/api/admin/expenses', {
+        method: editingExpense ? 'PUT' : 'POST',
         body: JSON.stringify({
           category: String(formData.get('category')).trim(),
           description: String(formData.get('description')).trim(),
@@ -248,13 +273,28 @@ function AdminFinancePage({ section }: { section: Section }) {
           notes: String(formData.get('notes')).trim() || null,
         }),
       })
-      setNotice('تم تسجيل المصروف.')
+      setNotice(editingExpense ? 'تم تعديل المصروف.' : 'تم تسجيل المصروف.')
       form.reset()
+      setExpenseOpen(false)
+      setEditingExpense(null)
       setRefreshKey((value) => value + 1)
     } catch (cause) {
       setError(getErrorMessage(cause, 'تعذر تسجيل المصروف.'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const deleteExpense = async (expense: AdminExpense) => {
+    if (!window.confirm(`حذف المصروف «${expense.description}» بقيمة ${expense.amount.toLocaleString('ar')} ₪؟`)) return
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/api/admin/expenses/${expense.id}`, { method: 'DELETE' })
+      setNotice('تم حذف المصروف.')
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر حذف المصروف.'))
     }
   }
 
@@ -365,26 +405,22 @@ function AdminFinancePage({ section }: { section: Section }) {
         )}
 
         {section === 'expenses' && (
-          <div className="admin-finance-layout">
+          <div className="admin-expenses-view">
+            <button className="admin-secondary-button admin-expense-trigger" type="button"
+              onClick={() => { setEditingExpense(null); setExpenseOpen(true) }}><Plus size={15} /> تسجيل مصروف</button>
             <div className="admin-finance-list">
               {expenses.map((expense) => <div className="admin-finance-row" key={expense.id}>
                 <div><strong>{expense.description}</strong><small>{expense.category} · {expense.method}</small></div>
                 <span>{expense.expenseDate}</span><strong>{expense.amount.toLocaleString('ar')} ₪</strong>
+                <div className="admin-expense-actions">
+                  <button className="admin-icon-button" type="button" aria-label={`تعديل المصروف ${expense.description}`}
+                    title="تعديل" onClick={() => { setEditingExpense(expense); setExpenseOpen(true) }}><Pencil size={15} /></button>
+                  <button className="admin-icon-button admin-icon-button--danger" type="button" aria-label={`حذف المصروف ${expense.description}`}
+                    title="حذف" onClick={() => void deleteExpense(expense)}><Trash2 size={15} /></button>
+                </div>
               </div>)}
               {!expenses.length && <p className="admin-empty-inline">لا توجد مصروفات مسجلة.</p>}
             </div>
-            <form className="admin-form" onSubmit={(event) => void createExpense(event)}>
-              <h3>تسجيل مصروف</h3>
-              <label>التصنيف<input name="category" maxLength={80} placeholder="إيجار، أدوات، فواتير..." required /></label>
-              <label>البيان<input name="description" maxLength={500} required /></label>
-              <label>المبلغ (₪)<input name="amount" type="number" min="0.01" step="0.01" required /></label>
-              <label>التاريخ<input name="expenseDate" type="date" defaultValue={getShopDate()}
-                onClick={(event) => event.currentTarget.showPicker?.()} required /></label>
-              <label>طريقة الدفع<select name="method">{methods.map((method) =>
-                <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
-              <label>ملاحظات<input name="notes" maxLength={1000} /></label>
-              <button className="admin-primary-button" disabled={busy}>{busy ? 'جارٍ الحفظ...' : 'حفظ المصروف'}</button>
-            </form>
           </div>
         )}
 
@@ -405,6 +441,7 @@ function AdminFinancePage({ section }: { section: Section }) {
                   <h3>الخدمات الأكثر طلباً</h3></div><span className="admin-report-period-chip">هذا الشهر</span></div>
                 {bestSellingServices.length ? <div className="admin-report-highlight-layout">
                   <ReportDonut values={bestSellingServices.map((service) => service.bookingCount)}
+                    labels={bestSellingServices.map((service) => service.serviceName)} valueUnit="حجز"
                     centerValue={bestSellingServices.reduce((total, service) => total + service.bookingCount, 0).toLocaleString('ar')}
                     centerLabel="حجز" label="توزيع الحجوزات" />
                   <div className="admin-report-highlight-rows">{bestSellingServices.map((service) => (
@@ -422,6 +459,7 @@ function AdminFinancePage({ section }: { section: Section }) {
                   <h3>المنتجات الأكثر مبيعاً</h3></div><span className="admin-report-period-chip">هذا الشهر</span></div>
                 {bestSellingProducts.length ? <div className="admin-report-highlight-layout">
                   <ReportDonut values={bestSellingProducts.map((product) => product.salesTotal)}
+                    labels={bestSellingProducts.map((product) => product.productName)} valueUnit="₪"
                     centerValue={`${bestSellingProducts.reduce((total, product) => total + product.salesTotal, 0).toLocaleString('ar')} ₪`}
                     centerLabel="مبيعات" label="توزيع المبيعات" />
                   <div className="admin-report-highlight-rows">{bestSellingProducts.map((product) => (
@@ -489,6 +527,36 @@ function AdminFinancePage({ section }: { section: Section }) {
           )
         )}
       </section>
+      {expenseOpen && createPortal(
+        <div className="admin-booking-modal-backdrop admin-customer-modal-backdrop" role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setExpenseOpen(false)
+          }}>
+          <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
+            aria-labelledby="create-expense-title" dir="rtl">
+            <div className="admin-panel-heading">
+              <div><span className="admin-eyebrow">المصروفات</span>
+                <h2 id="create-expense-title">{editingExpense ? 'تعديل المصروف' : 'تسجيل مصروف'}</h2></div>
+              <button className="admin-icon-button" type="button" aria-label="إغلاق"
+                onClick={() => setExpenseOpen(false)}><X size={17} /></button>
+            </div>
+            <form className="admin-form admin-expense-form" onSubmit={(event) => void createExpense(event)}>
+              <label>التصنيف<input name="category" maxLength={80} defaultValue={editingExpense?.category ?? ''} placeholder="إيجار، أدوات، فواتير..." required /></label>
+              <label>البيان<input name="description" maxLength={500} defaultValue={editingExpense?.description ?? ''} required /></label>
+              <label>المبلغ (₪)<input name="amount" type="number" min="0.01" step="0.01" defaultValue={editingExpense?.amount ?? ''} required /></label>
+              <label>التاريخ<input name="expenseDate" type="date" defaultValue={editingExpense?.expenseDate ?? getShopDate()}
+                onClick={(event) => event.currentTarget.showPicker?.()} required /></label>
+              <label>طريقة الدفع<select name="method" defaultValue={editingExpense?.method ?? 'CASH'}>{methods.map((method) =>
+                <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
+              <label>ملاحظات<input name="notes" maxLength={1000} defaultValue={editingExpense?.notes ?? ''} /></label>
+              <button className="admin-primary-button" disabled={busy}>
+                {busy ? 'جارٍ الحفظ...' : editingExpense ? 'حفظ التعديل' : 'حفظ المصروف'}
+              </button>
+            </form>
+          </section>
+        </div>,
+        document.body,
+      )}
       {addDebtOpen && createPortal(
         <div className="admin-booking-modal-backdrop admin-customer-modal-backdrop" role="presentation"
           onMouseDown={(event) => {

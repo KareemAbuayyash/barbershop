@@ -816,6 +816,32 @@ public class AdminManagementService {
 		return expense;
 	}
 
+	@Transactional
+	public Expense updateExpense(UUID id, ExpenseRequest request) {
+		requireChoice(request.method(), PAYMENT_METHODS, "Unsupported payment method.");
+		int updated = jdbc.update("""
+				UPDATE shop_expenses
+				SET category = ?, description = ?, amount = ?, expense_date = ?, method = ?, notes = ?
+				WHERE id = ?
+				""", request.category().trim(), request.description().trim(), request.amount(),
+				request.expenseDate(), request.method(), trimToNull(request.notes()), id);
+		if (updated == 0) throw notFound("Expense not found.");
+		return jdbc.queryForObject("""
+				SELECT id, category, description, amount, expense_date, method, notes, created_at
+				FROM shop_expenses WHERE id = ?
+				""", (rs, row) -> new Expense(rs.getObject("id", UUID.class), rs.getString("category"),
+				 rs.getString("description"), rs.getBigDecimal("amount"),
+				 rs.getObject("expense_date", LocalDate.class), rs.getString("method"),
+				 rs.getString("notes"), rs.getTimestamp("created_at").toInstant()), id);
+	}
+
+	@Transactional
+	public void deleteExpense(UUID id) {
+		if (jdbc.update("DELETE FROM shop_expenses WHERE id = ?", id) == 0) {
+			throw notFound("Expense not found.");
+		}
+	}
+
 	@Transactional(readOnly = true)
 	public ReportResponse report(LocalDate fromDate, LocalDate toDate) {
 		if (fromDate == null || toDate == null) {

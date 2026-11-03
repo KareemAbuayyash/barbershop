@@ -3096,6 +3096,27 @@ button {
   font-size: 10px;
 }
 
+.admin-expense-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.admin-expense-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.admin-finance-row > .admin-expense-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 30px);
+  width: 66px;
+}
+
 .admin-debt-value,
 .admin-low-stock {
   color: #e49b89;
@@ -3376,7 +3397,7 @@ button {
 .admin-product-preview {
   display: block;
   width: min(100%, 320px);
-  max-height: 240px;
+  max-height: 170px;
   margin: 16px auto;
   border: 1px solid var(--admin-border);
   border-radius: 9px;
@@ -4199,7 +4220,8 @@ button {
 }
 
 .admin-dashboard-line-chart {
-  overflow: hidden;
+  position: relative;
+  overflow: visible;
   margin-top: 18px;
 }
 
@@ -4228,10 +4250,51 @@ button {
   stroke-width: 3;
 }
 
+.admin-dashboard-chart-hit-line {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.admin-dashboard-chart-hit-dot {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+}
+
 .admin-dashboard-chart-dot {
   fill: #ddc794;
   stroke: #211b20;
   stroke-width: 2;
+  pointer-events: none;
+}
+
+.admin-dashboard-chart-tooltip {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  min-width: 138px;
+  gap: 5px;
+  padding: 9px 11px;
+  transform: translate(-50%, -110%);
+  border: 1px solid rgba(195, 166, 107, .38);
+  border-radius: 8px;
+  background: #11110f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .38);
+  color: #eeeae1;
+  font-size: 10px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.admin-dashboard-chart-tooltip strong {
+  color: #ddc794;
+}
+
+.admin-dashboard-chart-tooltip small {
+  color: var(--color-muted);
 }
 
 .admin-dashboard-chart-label {
@@ -4592,9 +4655,29 @@ button {
 
 .admin-report-highlight-rows {
   min-width: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-inline-end: 4px;
+}
+
+.admin-report-highlight-rows::-webkit-scrollbar {
+  width: 5px;
+}
+
+.admin-report-highlight-rows::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: rgba(195, 166, 107, .42);
+}
+
+.admin-report-highlight-rows {
+  scrollbar-color: rgba(195, 166, 107, .42) transparent;
+  scrollbar-width: thin;
 }
 
 .admin-report-donut-wrap {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 4px;
@@ -4622,6 +4705,51 @@ button {
 .admin-report-donut-segment {
   transform: rotate(-90deg);
   transform-origin: 60px 60px;
+  cursor: pointer;
+  pointer-events: stroke;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.admin-report-donut-segment:hover,
+.admin-report-donut-segment:focus-visible {
+  stroke-width: 15;
+  outline: none;
+  filter: brightness(1.2);
+}
+
+.admin-report-chart-tooltip {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  min-width: 145px;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 9px 11px;
+  transform: translate(8px, -50%);
+  border: 1px solid rgba(195, 166, 107, .38);
+  border-radius: 8px;
+  background: #11110f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .38);
+  color: #eeeae1;
+  font-size: 10px;
+  text-align: start;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.admin-report-chart-tooltip > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-report-chart-tooltip > span:nth-last-child(2) {
+  color: #ddc794;
+}
+
+.admin-report-chart-tooltip > small {
+  grid-column: 2 / -1;
+  color: var(--color-muted);
 }
 
 .admin-report-donut-value {
@@ -4801,6 +4929,10 @@ button {
 
   .admin-report-highlights {
     grid-template-columns: 1fr;
+  }
+
+  .admin-report-highlight-rows {
+    max-height: 170px;
   }
 
   .admin-report-highlight-layout {

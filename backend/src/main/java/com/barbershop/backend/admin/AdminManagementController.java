@@ -186,6 +186,17 @@ public class AdminManagementController {
 		return service.createExpense(request, authentication.getName());
 	}
 
+	@PutMapping("/expenses/{id}")
+	public Expense updateExpense(@PathVariable UUID id, @Valid @RequestBody ExpenseRequest request) {
+		return service.updateExpense(id, request);
+	}
+
+	@DeleteMapping("/expenses/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteExpense(@PathVariable UUID id) {
+		service.deleteExpense(id);
+	}
+
 	@GetMapping("/reports")
 	public ReportResponse report(
 			@RequestParam(required = false) LocalDate fromDate,

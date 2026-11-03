@@ -56,6 +56,8 @@ function OwnerPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [trend, setTrend] = useState<AdminDashboardTrendPoint[] | null>(null)
   const [todayBookings, setTodayBookings] = useState<AdminBooking[] | null>(null)
+  const [hoveredTrendPoint, setHoveredTrendPoint] = useState<number | null>(null)
+  const [trendTooltipPosition, setTrendTooltipPosition] = useState({ x: 0, y: 0 })
   const [error, setError] = useState('')
   const shopDate = getShopDate()
   const dateLabel = new Intl.DateTimeFormat('ar', {
@@ -138,7 +140,15 @@ function OwnerPage() {
                 <span>إجمالي الدفعات المحصلة خلال أسبوع</span>
               </div>
               <div className="admin-dashboard-line-chart">
-                {chart && <svg viewBox="0 0 700 230" role="img" aria-label="الدفعات المحصلة خلال آخر سبعة أيام">
+                {chart && <svg viewBox="0 0 700 230" role="img" aria-label="الدفعات المحصلة خلال آخر سبعة أيام"
+                  onMouseMove={(event) => {
+                    const bounds = event.currentTarget.getBoundingClientRect()
+                    setTrendTooltipPosition({
+                      x: Math.min(bounds.width - 95, Math.max(95, event.clientX - bounds.left)),
+                      y: Math.max(32, event.clientY - bounds.top),
+                    })
+                  }}
+                  onMouseLeave={() => setHoveredTrendPoint(null)}>
                   <defs>
                     <linearGradient id="dashboard-area" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#c3a66b" stopOpacity=".3" />
@@ -148,14 +158,39 @@ function OwnerPage() {
                   {[46, 90, 134, 178].map((y) => <line key={y} x1="38" y1={y} x2="662" y2={y}
                     className={y === 178 ? 'admin-dashboard-chart-axis' : 'admin-dashboard-chart-grid'} />)}
                   <polygon points={chart.area} fill="url(#dashboard-area)" />
+                  <polyline points={chart.line} className="admin-dashboard-chart-hit-line"
+                    onMouseMove={(event) => {
+                      const bounds = event.currentTarget.ownerSVGElement?.getBoundingClientRect()
+                      if (!bounds) return
+                      const x = (event.clientX - bounds.left) / bounds.width * 700
+                      const y = (event.clientY - bounds.top) / bounds.height * 230
+                      const nearestIndex = chart.points.reduce((nearest, point, index) => {
+                        const currentDistance = Math.hypot(point.x - x, point.y - y)
+                        const nearestPoint = chart.points[nearest]
+                        return currentDistance < Math.hypot(nearestPoint.x - x, nearestPoint.y - y) ? index : nearest
+                      }, 0)
+                      setHoveredTrendPoint(nearestIndex)
+                    }} />
                   <polyline points={chart.line} className="admin-dashboard-chart-line" />
-                  {chart.points.map((point) => <g key={point.date}>
-                    <circle cx={point.x} cy={point.y} r="3.5" className="admin-dashboard-chart-dot">
+                  {chart.points.map((point, index) => <g key={point.date}>
+                    <circle cx={point.x} cy={point.y} r="13" className="admin-dashboard-chart-hit-dot"
+                      tabIndex={0} role="button"
+                      aria-label={`${point.label}: ${formatAmount(point.collected)} ₪، ${point.bookings.toLocaleString('ar')} حجوزات`}
+                      onMouseEnter={() => setHoveredTrendPoint(index)}
+                      onFocus={() => setHoveredTrendPoint(index)} onBlur={() => setHoveredTrendPoint(null)}
+                      onClick={() => setHoveredTrendPoint((active) => active === index ? null : index)}>
                       <title>{`${point.label}: ${formatAmount(point.collected)} ₪ · ${point.bookings.toLocaleString('ar')} حجوزات`}</title>
                     </circle>
+                    <circle cx={point.x} cy={point.y} r="3.5" className="admin-dashboard-chart-dot" />
                     <text x={point.x} y="201" textAnchor="middle" className="admin-dashboard-chart-label">{point.label}</text>
                   </g>)}
                 </svg>}
+                {chart && hoveredTrendPoint !== null && chart.points[hoveredTrendPoint] && <div className="admin-dashboard-chart-tooltip"
+                  style={{ left: trendTooltipPosition.x, top: trendTooltipPosition.y }} role="status">
+                  <strong>{chart.points[hoveredTrendPoint].label}</strong>
+                  <span>{formatAmount(chart.points[hoveredTrendPoint].collected)} ₪</span>
+                  <small>{chart.points[hoveredTrendPoint].bookings.toLocaleString('ar')} حجوزات</small>
+                </div>}
               </div>
               <p className="admin-form-note">الإيراد يعرض الدفعات المستلمة فعليًا، ولا يشمل الحجوزات أو الديون غير المحصلة.</p>
             </>
