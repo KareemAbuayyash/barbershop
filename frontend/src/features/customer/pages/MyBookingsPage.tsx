@@ -132,7 +132,7 @@ function MyBookingsPage() {
                 <div className="owner-booking-heading">
                   <div>
                     <h2>{booking.serviceName}</h2>
-                    <p>{booking.servicePrice} ₪ · {booking.serviceDurationMinutes} دقيقة</p>
+                    <p>{booking.servicePrice > 0 ? `${booking.servicePrice} ₪` : 'السعر يحدد في المحل'} · {booking.serviceDurationMinutes} دقيقة</p>
                   </div>
                   <span className={`booking-status booking-status--${booking.status.toLowerCase()}`}>
                     {bookingStatuses[booking.status]}

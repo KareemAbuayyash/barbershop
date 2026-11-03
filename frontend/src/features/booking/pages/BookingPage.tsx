@@ -85,6 +85,9 @@ function BookingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [validationErrors, setValidationErrors] = useState<Partial<Record<
+    'serviceId' | 'customerName' | 'scheduleDate' | 'startsAt', string
+  >>>({})
   const [profileError, setProfileError] = useState('')
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null)
   const [loadingProfile, setLoadingProfile] = useState(false)
@@ -207,6 +210,33 @@ function BookingPage() {
     if (!selectedMode) return
     setError('')
     setResult(null)
+
+    const errors: typeof validationErrors = {}
+    if (!selectedServiceId) errors.serviceId = 'اختر الخدمة التي تريد حجزها.'
+    if (!customerName.trim()) errors.customerName = 'اكتب اسم العميل لإكمال الحجز.'
+    if ((selectedMode === 'EXACT_APPOINTMENT' || selectedMode === 'DAY_QUEUE') && !scheduleDate) {
+      errors.scheduleDate = 'اختر اليوم المطلوب.'
+    }
+    if (selectedMode === 'EXACT_APPOINTMENT' && !selectedSlot) {
+      errors.startsAt = 'اختر موعدًا من الأوقات المتاحة.'
+    }
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors)
+      const firstInvalid = Object.keys(errors)[0]
+      const firstInvalidId = firstInvalid === 'serviceId' ? 'booking-service'
+        : firstInvalid === 'customerName' ? 'booking-customer-name'
+          : selectedMode === 'DAY_QUEUE' ? 'booking-queue-date'
+            : firstInvalid === 'scheduleDate' ? 'booking-date' : 'booking-starts-at'
+      window.setTimeout(() => {
+        document.getElementById(firstInvalidId)?.focus()
+      }, 0)
+      return
+    }
+    setValidationErrors({})
+    if (selectedDateNeedsAvailability && !availability?.open) {
+      setError('تعذر التحقق من توفر الحجز لهذا اليوم. اختر الخدمة واليوم وانتظر التحقق ثم أعد المحاولة.')
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -333,6 +363,7 @@ function BookingPage() {
                 )
                 setError('')
                 setResult(null)
+                setValidationErrors({})
               }}
             />
             {selectedMode && createPortal(
@@ -346,13 +377,16 @@ function BookingPage() {
                 <div><span className="booking-modal-eyebrow">تم اختيار طريقة الحجز</span>
                   <h2 id="booking-form-title">تفاصيل الحجز</h2></div>
                 <button type="button" className="booking-modal-close" aria-label="إغلاق"
-                  onClick={() => setSelectedMode(undefined)}><X size={19} /></button>
+                  onClick={() => { setSelectedMode(undefined); setValidationErrors({}) }}><X size={19} /></button>
               </div>
-              <form className="booking-form site-form" onSubmit={(event) => void handleSubmit(event)}>
+              <form className="booking-form site-form" noValidate onSubmit={(event) => void handleSubmit(event)}>
                 <label htmlFor="booking-service">الخدمة</label>
                 <select id="booking-service" name="serviceId" required value={selectedServiceId}
+                  aria-invalid={Boolean(validationErrors.serviceId)}
+                  aria-describedby={validationErrors.serviceId ? 'booking-service-error' : undefined}
                   onChange={(event) => {
                     setSelectedServiceId(event.target.value)
+                    setValidationErrors((current) => ({ ...current, serviceId: undefined }))
                     setAvailability(null)
                     setSelectedSlot('')
                     setLoadingAvailability(true)
@@ -360,10 +394,12 @@ function BookingPage() {
                   <option value="" disabled>اختر الخدمة</option>
                   {services.map((service) => (
                     <option key={service.id} value={service.id}>
-                      {service.name} — {service.price} ₪، {service.durationMinutes} دقيقة
+                      {service.name} — {service.price > 0 ? `${service.price} ₪` : 'السعر يحدد في المحل'}، {service.durationMinutes} دقيقة
                     </option>
                   ))}
                 </select>
+                {validationErrors.serviceId && <p className="field-validation-error" id="booking-service-error"
+                  role="alert">{validationErrors.serviceId}</p>}
 
                 {isCustomer && (
                   <>
@@ -388,7 +424,14 @@ function BookingPage() {
                 )}
                 <label htmlFor="booking-customer-name">الاسم</label>
                 <input id="booking-customer-name" name="customerName" autoComplete="name" maxLength={150}
-                  value={customerName} onChange={(event) => setCustomerName(event.target.value)} required />
+                  value={customerName} aria-invalid={Boolean(validationErrors.customerName)}
+                  aria-describedby={validationErrors.customerName ? 'booking-customer-name-error' : undefined}
+                  onChange={(event) => {
+                    setCustomerName(event.target.value)
+                    if (event.target.value.trim()) setValidationErrors((current) => ({ ...current, customerName: undefined }))
+                  }} required />
+                {validationErrors.customerName && <p className="field-validation-error" id="booking-customer-name-error"
+                  role="alert">{validationErrors.customerName}</p>}
                 <label htmlFor="booking-customer-phone">رقم الهاتف (اختياري)</label>
                 <input id="booking-customer-phone" name="customerPhone" type="tel" autoComplete="tel" maxLength={32}
                   value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} />
@@ -397,21 +440,33 @@ function BookingPage() {
                   <>
                     <label htmlFor="booking-date">تاريخ الموعد</label>
                     <input id="booking-date" type="date" min={getShopDate()} value={scheduleDate}
+                      aria-invalid={Boolean(validationErrors.scheduleDate)}
+                      aria-describedby={validationErrors.scheduleDate ? 'booking-date-error' : undefined}
                       onChange={(event) => {
                         setScheduleDate(event.target.value)
+                        if (event.target.value) setValidationErrors((current) => ({ ...current, scheduleDate: undefined }))
                         setAvailability(null)
                         setSelectedSlot('')
                         setLoadingAvailability(true)
                       }}
                       onClick={(event) => event.currentTarget.showPicker?.()} required />
+                    {validationErrors.scheduleDate && <p className="field-validation-error" id="booking-date-error"
+                      role="alert">{validationErrors.scheduleDate}</p>}
                     <label htmlFor="booking-starts-at">الوقت المتاح</label>
                     <select id="booking-starts-at" name="startsAt" value={selectedSlot}
-                      onChange={(event) => setSelectedSlot(event.target.value)} required>
+                      aria-invalid={Boolean(validationErrors.startsAt)}
+                      aria-describedby={validationErrors.startsAt ? 'booking-time-error' : undefined}
+                      onChange={(event) => {
+                        setSelectedSlot(event.target.value)
+                        if (event.target.value) setValidationErrors((current) => ({ ...current, startsAt: undefined }))
+                      }} required>
                       <option value="" disabled>اختر موعداً متاحاً</option>
                       {availability?.slots.map((slot) => (
                         <option value={slot.startsAt} key={slot.startsAt}>{slot.localTime}</option>
                       ))}
                     </select>
+                    {validationErrors.startsAt && <p className="field-validation-error" id="booking-time-error"
+                      role="alert">{validationErrors.startsAt}</p>}
                   </>
                 )}
                 {selectedMode === 'CONFIRMATION_REQUEST' && (
@@ -446,12 +501,17 @@ function BookingPage() {
                   <>
                     <label htmlFor="booking-queue-date">اليوم المطلوب</label>
                     <input id="booking-queue-date" name="queueDate" type="date" min={getShopDate()}
+                      aria-invalid={Boolean(validationErrors.scheduleDate)}
+                      aria-describedby={validationErrors.scheduleDate ? 'booking-queue-date-error' : undefined}
                       value={scheduleDate} onChange={(event) => {
                         setScheduleDate(event.target.value)
+                        if (event.target.value) setValidationErrors((current) => ({ ...current, scheduleDate: undefined }))
                         setAvailability(null)
                         setLoadingAvailability(true)
                       }}
                       onClick={(event) => event.currentTarget.showPicker?.()} required />
+                    {validationErrors.scheduleDate && <p className="field-validation-error" id="booking-queue-date-error"
+                      role="alert">{validationErrors.scheduleDate}</p>}
                   </>
                 )}
                 {loadingAvailability && (selectedMode !== 'CONFIRMATION_REQUEST' || preferredDateSelected)
@@ -470,8 +530,7 @@ function BookingPage() {
                 <textarea id="booking-notes" name="notes" rows={3} maxLength={2000} />
                 <button className="button button--primary form-submit" type="submit"
                   disabled={authLoading || loadingProfile || isSubmitting
-                    || (selectedDateNeedsAvailability && (loadingAvailability || !availability?.open))
-                    || (selectedMode === 'EXACT_APPOINTMENT' && !selectedSlot)}>
+                    || (selectedDateNeedsAvailability && (loadingAvailability || availability?.open === false))}>
                   {isSubmitting ? 'جارٍ إرسال الطلب...' : 'إرسال طلب الحجز'}
                 </button>
                 {error && <p className="form-message" role="alert">{error}</p>}

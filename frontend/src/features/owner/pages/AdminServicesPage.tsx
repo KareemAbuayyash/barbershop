@@ -274,7 +274,7 @@ function AdminServicesPage() {
             {visibleServices.map((service) => (
               <article className="admin-service-row" key={service.id}>
                 <div><strong>{service.name}</strong><p>{service.description}</p>
-                  <small>{service.price.toLocaleString('ar')} ₪ · {service.durationMinutes} دقيقة · {service.active ? 'نشطة' : 'متوقفة'}</small></div>
+                  <small>{service.price > 0 ? `${service.price.toLocaleString('ar')} ₪` : 'السعر يحدد في المحل'} · {service.durationMinutes} دقيقة · {service.active ? 'نشطة' : 'متوقفة'}</small></div>
                 <div className="admin-inline-actions">
                   <button className="admin-secondary-button" type="button" disabled={busy} onClick={() => {
                     setEditing(service)
@@ -334,7 +334,8 @@ function AdminServicesPage() {
               </div>
               <label>اسم الخدمة<input name="name" minLength={2} maxLength={150} defaultValue={editing?.name} required /></label>
               <label>الوصف (اختياري)<textarea name="description" rows={3} maxLength={10000} defaultValue={editing?.description} /></label>
-              <label>السعر (₪)<input name="price" type="number" min="0" step="0.01" defaultValue={editing?.price} required /></label>
+              <label>السعر (₪) — اختياري<input name="price" type="number" min="0" step="0.01" placeholder="يحدد في المحل" defaultValue={editing?.price || ''} />
+                <small>اتركه فارغًا إذا كان السعر يحدد عند حضور الزبون.</small></label>
               <label>المدة بالدقائق<input name="durationMinutes" type="number" min="1" step="1" defaultValue={editing?.durationMinutes} required /></label>
               <button className="admin-primary-button" disabled={busy}>
                 {busy ? 'جارٍ الحفظ...' : editing ? 'حفظ التعديل' : 'إضافة الخدمة'}

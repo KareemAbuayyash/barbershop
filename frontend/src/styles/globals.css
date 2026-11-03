@@ -1326,6 +1326,35 @@ button {
   line-height: 1.8;
 }
 
+.field-validation-error {
+  margin: -3px 0 3px;
+  color: #e6a29e;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.custom-validation-message {
+  display: block;
+  margin: 6px 0 2px;
+  padding: 6px 9px;
+  border-inline-start: 2px solid #d47770;
+  border-radius: 3px;
+  color: #e6a29e;
+  background: rgba(153, 61, 55, 0.1);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+form [aria-invalid="true"] {
+  border-color: rgba(220, 100, 100, 0.75) !important;
+  box-shadow: 0 0 0 2px rgba(220, 100, 100, 0.1);
+}
+
+.site-form [aria-invalid="true"] {
+  border-color: rgba(220, 100, 100, 0.75);
+  box-shadow: 0 0 0 2px rgba(220, 100, 100, 0.1);
+}
+
 .auth-switch {
   margin-top: 9px;
   color: var(--color-muted);

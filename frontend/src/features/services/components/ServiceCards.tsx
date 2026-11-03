@@ -63,7 +63,7 @@ function ServiceCards({ limit }: ServiceCardsProps) {
             {service.description && <p>{service.description}</p>}
             <div className="service-meta">
               <span className="service-duration"><Clock3 size={14} aria-hidden="true" />{service.durationMinutes} دقيقة</span>
-              <span className="service-price"><b>{priceFormatter.format(service.price)}</b></span>
+              <span className="service-price"><b>{service.price > 0 ? priceFormatter.format(service.price) : 'السعر يحدد في المحل'}</b></span>
             </div>
           </div>
         </article>

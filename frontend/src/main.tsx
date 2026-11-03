@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import './styles/globals.css'
 import { router } from './app/router'
+import CustomFormValidation from './components/ui/CustomFormValidation'
 import { AuthProvider } from './features/auth/AuthContext'
 
 if ('serviceWorker' in navigator) {
@@ -15,6 +16,7 @@ if ('serviceWorker' in navigator) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
+      <CustomFormValidation />
       <RouterProvider router={router} />
     </AuthProvider>
   </StrictMode>,
