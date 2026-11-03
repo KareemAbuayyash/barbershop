@@ -1160,6 +1160,15 @@ public class AdminManagementService {
 	@Transactional
 	public ShopProfile updateShopSettings(AdminSettingsRequest request, String actor) {
 		shopScheduleService.validateSchedule(request.openingHours());
+		List<String> newlyClosedDays = jdbc.queryForList("""
+				WITH days(day) AS (VALUES ('MONDAY'), ('TUESDAY'), ('WEDNESDAY'), ('THURSDAY'),
+				                   ('FRIDAY'), ('SATURDAY'), ('SUNDAY'))
+				SELECT days.day
+				FROM days CROSS JOIN shop_profile
+				WHERE shop_profile.singleton_key = TRUE
+				  AND coalesce(shop_profile.opening_hours -> days.day, 'null'::jsonb) <> 'null'::jsonb
+				  AND coalesce(CAST(? AS jsonb) -> days.day, 'null'::jsonb) = 'null'::jsonb
+				""", String.class, request.openingHours());
 		jdbc.update("""
 				UPDATE shop_profile SET phone_number = ?, address = ?,
 				       opening_hours = ?::jsonb, updated_at = CURRENT_TIMESTAMP, updated_by = ?
@@ -1176,8 +1185,37 @@ public class AdminManagementService {
 		if (updatedSettings == 0) {
 			throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking settings are not initialized.");
 		}
+		markBookingsForClosedDays(newlyClosedDays);
 		notificationService.notifySettingsChanged();
 		return shopProfile();
+	}
+
+	private void markBookingsForClosedDays(List<String> closedDays) {
+		if (closedDays.isEmpty()) return;
+		LocalDate today = LocalDate.now(SHOP_ZONE);
+		List<java.time.DayOfWeek> closedWeekdays = closedDays.stream()
+				.map(String::toUpperCase)
+				.map(java.time.DayOfWeek::valueOf)
+				.toList();
+		record AffectedBooking(UUID id, LocalDate date) { }
+		List<AffectedBooking> affected = jdbc.query("""
+				SELECT id,
+				       coalesce(queue_date, preferred_date, (starts_at AT TIME ZONE 'Asia/Hebron')::date) AS booking_date
+				FROM bookings
+				WHERE status IN ('PENDING', 'CONFIRMED')
+				  AND coalesce(queue_date, preferred_date, (starts_at AT TIME ZONE 'Asia/Hebron')::date) >= ?
+				""", (rs, row) -> new AffectedBooking(
+						rs.getObject("id", UUID.class), rs.getObject("booking_date", LocalDate.class)), today)
+				.stream()
+				.filter(booking -> booking.date() != null && closedWeekdays.contains(booking.date().getDayOfWeek()))
+				.toList();
+		for (AffectedBooking booking : affected) {
+			jdbc.update("""
+					UPDATE bookings SET status = 'PENDING', updated_at = CURRENT_TIMESTAMP
+					WHERE id = ? AND status IN ('PENDING', 'CONFIRMED')
+					""", booking.id());
+			notificationService.notifyBookingAffectedByShopClosure(booking.id(), booking.date());
+		}
 	}
 
 	public record DebtResponse(

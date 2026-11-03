@@ -103,8 +103,13 @@ public class GuestBookingService {
 			shopScheduleService.requireAppointmentTime(
 					validated.startsAt(), service.getDurationMinutes(), null);
 		} else if (validated.mode() == BookingMode.CONFIRMATION_REQUEST
-				&& validated.preferredDate() != null && validated.startsAt() == null) {
-			shopScheduleService.requireOpenDate(validated.preferredDate());
+				&& validated.preferredDate() != null) {
+			if (validated.startsAt() == null) {
+				shopScheduleService.requireOpenDate(validated.preferredDate());
+			} else {
+				shopScheduleService.requireAppointmentTime(
+						validated.startsAt(), service.getDurationMinutes(), null);
+			}
 		} else if (validated.queueDate() != null) {
 			shopScheduleService.requireOpenDate(validated.queueDate());
 		}

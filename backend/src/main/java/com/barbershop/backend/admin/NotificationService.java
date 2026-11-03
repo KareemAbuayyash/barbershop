@@ -308,6 +308,18 @@ public class NotificationService {
 				"تم تعديل موعد حجزك", body, "/my-bookings");
 	}
 
+	@Transactional
+	public void notifyBookingAffectedByShopClosure(UUID bookingId, LocalDate closedDate) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":shop-closed:" + closedDate;
+		String date = closedDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+		notifyBookingCustomerOrGuest(booking, "BOOKING_RESCHEDULED", eventKey,
+				"تغيير موعد الحجز",
+				"المحل مغلق بتاريخ " + date + ". تم وضع حجزك بانتظار التأكيد، وسيحدد المالك موعداً جديداً.",
+				"/my-bookings");
+	}
+
 	public void notifyBookingProposal(UUID bookingId) {
 		BookingNotificationDetails booking = findBookingNotification(bookingId);
 		if (booking == null) return;

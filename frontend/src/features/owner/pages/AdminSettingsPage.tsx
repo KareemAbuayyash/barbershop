@@ -204,7 +204,7 @@ function AdminSettingsPage() {
             <label>العنوان<input name="address" maxLength={300} defaultValue={profile.address ?? ''} /></label>
             <div className="admin-hours-editor">
               <h3>ساعات العمل الأسبوعية</h3>
-              <p className="admin-form-note">المواعيد وقائمة الانتظار متاحة فقط في الأيام والساعات المفتوحة. اختر فترات العمل بدقة.</p>
+              <p className="admin-form-note">المواعيد وقائمة الانتظار متاحة فقط في الأيام والساعات المفتوحة. عند إغلاق يوم لديه حجوزات قادمة، تصبح بانتظار التأكيد ويصل أصحابها إشعار لتحديد موعد جديد.</p>
               {weekdays.map(({ key, label }) => {
                 const day = hours[key]
                 return (
