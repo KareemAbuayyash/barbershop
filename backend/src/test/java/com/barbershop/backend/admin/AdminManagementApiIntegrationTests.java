@@ -1,6 +1,8 @@
 package com.barbershop.backend.admin;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import com.barbershop.backend.service.ServiceEntity;
 import com.barbershop.backend.service.ServiceRepository;
 import com.barbershop.backend.booking.Booking;
 import com.barbershop.backend.booking.BookingMode;
+import com.barbershop.backend.booking.BookingStatus;
 import com.barbershop.backend.customer.CustomerAccount;
 import com.barbershop.backend.customer.CustomerAccountRepository;
 import com.barbershop.backend.customer.CustomerEntity;
@@ -61,6 +64,42 @@ class AdminManagementApiIntegrationTests {
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+
+	@Test
+	@Transactional
+	@Rollback
+	@WithMockUser(roles = "OWNER")
+	void dashboardTodayCountIncludesOnlyActiveBookingsForEveryScheduleType() throws Exception {
+		ServiceEntity service = serviceRepository.saveAndFlush(
+				new ServiceEntity("Dashboard service", "Dashboard service", java.math.BigDecimal.TEN, 30));
+		CustomerEntity customer = customerRepository.saveAndFlush(
+				new CustomerEntity("Dashboard customer", "+970590000099"));
+		LocalDate today = LocalDate.now(ZoneId.of("Asia/Hebron"));
+		Instant appointmentToday = today.atTime(15, 0).atZone(ZoneId.of("Asia/Hebron")).toInstant();
+
+		bookingRepository.saveAndFlush(new Booking(
+				customer, service, BookingMode.DAY_QUEUE, null, today, 1, null));
+		Booking confirmationRequest = new Booking(
+				customer, null, service, BookingMode.CONFIRMATION_REQUEST, null, today, null, null, null);
+		bookingRepository.saveAndFlush(confirmationRequest);
+		Booking appointment = bookingRepository.saveAndFlush(new Booking(
+				customer, service, BookingMode.EXACT_APPOINTMENT, appointmentToday, null, null, null));
+		appointment.setStatus(BookingStatus.CONFIRMED);
+		bookingRepository.saveAndFlush(appointment);
+
+		Booking cancelled = new Booking(customer, service, BookingMode.DAY_QUEUE, null, today, 2, null);
+		cancelled.setStatus(BookingStatus.CANCELLED);
+		cancelled.setQueuePosition(null);
+		bookingRepository.saveAndFlush(cancelled);
+		Booking completed = new Booking(
+				customer, service, BookingMode.EXACT_APPOINTMENT, appointmentToday.plusSeconds(3600), null, null, null);
+		completed.setStatus(BookingStatus.COMPLETED);
+		bookingRepository.saveAndFlush(completed);
+
+		mockMvc.perform(get("/api/admin/summary"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.bookingsToday").value(3));
+	}
 
 	@Test
 	@Transactional
