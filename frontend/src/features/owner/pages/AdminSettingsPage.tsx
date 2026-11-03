@@ -191,14 +191,14 @@ function AdminSettingsPage() {
   }
 
   return (
-    <div className="admin-page">
-      <section className="admin-panel">
+    <div className="admin-page admin-settings-page">
+      <section className="admin-panel admin-settings-main">
         <div className="admin-panel-heading"><div><span className="admin-eyebrow">بيانات المحل والحجز</span>
           <h2>إعدادات المحل</h2></div><Settings size={20} /></div>
         {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
         {notice && <p className="admin-message" role="status">{notice}</p>}
         <form className="admin-settings-grid" onSubmit={(event) => void save(event)}>
-          <fieldset className="admin-panel admin-settings-section">
+          <fieldset className="admin-panel admin-settings-section admin-settings-shop">
             <legend>معلومات المحل</legend>
             <label>رقم الهاتف<input name="phoneNumber" type="tel" maxLength={32} defaultValue={profile.phoneNumber ?? ''} /></label>
             <label>العنوان<input name="address" maxLength={300} defaultValue={profile.address ?? ''} /></label>
@@ -249,7 +249,7 @@ function AdminSettingsPage() {
               })}
             </div>
           </fieldset>
-          <fieldset className="admin-panel admin-settings-section">
+          <fieldset className="admin-panel admin-settings-section admin-settings-booking">
             <legend>طرق الحجز</legend>
             {bookingModes.map(({ key, label }) => (
               <label className="admin-toggle-row" key={key}>
@@ -264,14 +264,14 @@ function AdminSettingsPage() {
           </button>
         </form>
       </section>
-      <section className="admin-panel">
+      <section className="admin-panel admin-owner-security">
         <div className="admin-panel-heading">
           <div><span className="admin-eyebrow">حماية الحساب</span><h2>بيانات المالك</h2></div>
         </div>
         {ownerError && <p className="admin-message admin-message--error" role="alert">{ownerError}</p>}
         {ownerNotice && <p className="admin-message" role="status">{ownerNotice}</p>}
         {ownerProfile && (
-          <form className="admin-form" onSubmit={(event) => void saveOwnerAccount(event)}>
+          <form className="admin-form admin-owner-account-form" onSubmit={(event) => void saveOwnerAccount(event)}>
             <label>اسم المستخدم
               <input value={ownerUsername} minLength={3} maxLength={64}
                 pattern="[A-Za-z0-9._-]{3,64}" autoComplete="username" required
@@ -286,8 +286,8 @@ function AdminSettingsPage() {
               <input type="password" value={newPassword} minLength={8} maxLength={72}
                 autoComplete="new-password" onChange={(event) => setNewPassword(event.target.value)} />
             </label>
-            <p className="admin-form-note">لتغيير اسم المستخدم أو كلمة المرور، أدخل كلمة المرور الحالية. تغيير كلمة المرور يتطلب أيضاً كلمة مرور جديدة من 8 أحرف على الأقل.</p>
-            <button className="admin-primary-button" disabled={ownerBusy}>
+            <p className="admin-form-note admin-owner-security-note">لتغيير اسم المستخدم أو كلمة المرور، أدخل كلمة المرور الحالية. تغيير كلمة المرور يتطلب أيضاً كلمة مرور جديدة من 8 أحرف على الأقل.</p>
+            <button className="admin-primary-button admin-owner-security-save" disabled={ownerBusy}>
               {ownerBusy ? 'جارٍ التحديث...' : 'حفظ بيانات المالك'}
             </button>
           </form>

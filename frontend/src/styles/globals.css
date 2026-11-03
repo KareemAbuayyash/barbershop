@@ -5460,3 +5460,245 @@ button {
   .notification-preferences { grid-template-columns: 1fr; }
   .notification-feed-item { padding: 14px; }
 }
+
+/* Owner settings layout */
+.admin-settings-page {
+  gap: 18px;
+}
+
+.admin-settings-main,
+.admin-owner-security {
+  padding: clamp(18px, 2.5vw, 30px);
+  border-color: rgba(195, 166, 107, .17);
+  border-radius: 14px;
+  background: linear-gradient(150deg, rgba(29, 28, 24, .98), rgba(19, 19, 17, .99));
+}
+
+.admin-settings-main > .admin-panel-heading,
+.admin-owner-security > .admin-panel-heading {
+  margin-bottom: 22px;
+  padding-bottom: 17px;
+  border-bottom: 1px solid rgba(224, 209, 175, .1);
+}
+
+.admin-settings-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(270px, .75fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.admin-settings-section {
+  min-width: 0;
+  padding: 21px;
+  border-color: rgba(224, 209, 175, .12);
+  border-radius: 11px;
+  background: rgba(16, 16, 14, .54);
+}
+
+.admin-settings-section legend {
+  padding-inline: 9px;
+  color: #e0ca96;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.admin-settings-section > label:not(.admin-toggle-row) {
+  display: grid;
+  gap: 7px;
+  color: #c9c2b4;
+  font-size: 12px;
+}
+
+.admin-settings-section input:not([type="checkbox"]) {
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid rgba(224, 209, 175, .15);
+  border-radius: 8px;
+  background: #11110f;
+  color: #eeeae1;
+  font: inherit;
+}
+
+.admin-settings-section input:focus,
+.admin-owner-account-form input:focus {
+  border-color: rgba(221, 199, 148, .65);
+  outline: 2px solid rgba(195, 166, 107, .12);
+}
+
+.admin-hours-editor {
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.admin-hours-editor h3 {
+  font-size: 15px;
+}
+
+.admin-hours-editor > .admin-form-note {
+  margin: 0 0 4px;
+  line-height: 1.7;
+}
+
+.admin-hours-row {
+  grid-template-columns: minmax(100px, .55fr) minmax(0, 1fr);
+  min-height: 56px;
+  gap: 12px;
+  padding: 9px 12px;
+  border-color: rgba(224, 209, 175, .1);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .018);
+}
+
+.admin-hours-day {
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.admin-hours-day input {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-hours-times {
+  gap: 8px;
+}
+
+.admin-hours-times label {
+  gap: 5px;
+  color: #a9a293;
+  font-size: 10px;
+}
+
+.admin-hours-times input {
+  width: 100%;
+  min-width: 0;
+  min-height: 37px;
+  border-radius: 7px;
+}
+
+.admin-hours-closed {
+  justify-self: end;
+  padding: 5px 9px;
+  border: 1px solid rgba(224, 209, 175, .1);
+  border-radius: 20px;
+  font-size: 10px;
+}
+
+.admin-settings-booking {
+  position: sticky;
+  top: 94px;
+}
+
+.admin-settings-booking .admin-toggle-row {
+  min-height: 52px;
+  padding: 9px 0;
+  font-size: 12px;
+}
+
+.admin-settings-booking .admin-toggle-row input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--color-gold);
+}
+
+.admin-settings-booking .admin-form-note {
+  margin-top: 3px;
+  line-height: 1.7;
+}
+
+.admin-settings-save {
+  min-height: 44px;
+  border-radius: 8px;
+}
+
+.admin-owner-security > .admin-panel-heading h2 {
+  font-size: 19px;
+}
+
+.admin-owner-account-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 15px;
+}
+
+.admin-owner-account-form > label {
+  display: grid;
+  gap: 7px;
+  color: #c9c2b4;
+  font-size: 12px;
+}
+
+.admin-owner-account-form input {
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid rgba(224, 209, 175, .15);
+  border-radius: 8px;
+  background: #11110f;
+  color: #eeeae1;
+  font: inherit;
+}
+
+.admin-owner-security-note,
+.admin-owner-security-save {
+  grid-column: 1 / -1;
+}
+
+.admin-owner-security-note {
+  margin: 0;
+  line-height: 1.75;
+}
+
+.admin-owner-security-save {
+  justify-self: start;
+  min-width: 190px;
+}
+
+@media (max-width: 900px) {
+  .admin-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-settings-booking {
+    position: static;
+  }
+}
+
+@media (max-width: 600px) {
+  .admin-settings-main,
+  .admin-owner-security {
+    padding: 16px 12px;
+  }
+
+  .admin-settings-section {
+    padding: 17px 12px;
+  }
+
+  .admin-hours-row {
+    grid-template-columns: minmax(72px, .42fr) minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .admin-hours-day {
+    gap: 6px !important;
+    font-size: 11px;
+  }
+
+  .admin-hours-times {
+    gap: 5px;
+  }
+
+  .admin-hours-times input {
+    padding-inline: 4px;
+    font-size: 11px;
+  }
+
+  .admin-owner-account-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-owner-security-note,
+  .admin-owner-security-save {
+    grid-column: auto;
+  }
+}
