@@ -1,7 +1,51 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Archive, Plus, Scissors, X } from 'lucide-react'
 import { apiRequest, getErrorMessage, type Service } from '../../../lib/api'
+
+interface ServiceImageCrop {
+  centerX: number
+  centerY: number
+  size: number
+}
+
+async function prepareServiceImage(image: File, crop: ServiceImageCrop): Promise<File> {
+  const maxBytes = 1.8 * 1024 * 1024
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(image)
+  } catch {
+    throw new Error('تعذر فتح الصورة لضغطها. جرّب صورة بصيغة JPG أو PNG.')
+  }
+
+  try {
+    const cropSize = Math.min(bitmap.width, bitmap.height) * crop.size
+    const sourceX = Math.max(0, Math.min(bitmap.width - cropSize, crop.centerX * bitmap.width - cropSize / 2))
+    const sourceY = Math.max(0, Math.min(bitmap.height - cropSize, crop.centerY * bitmap.height - cropSize / 2))
+    const canvas = document.createElement('canvas')
+    canvas.width = 1200
+    canvas.height = 1200
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('تعذر تجهيز الصورة. جرّب مرة أخرى.')
+    context.fillStyle = '#171613'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(bitmap, sourceX, sourceY, cropSize, cropSize, 0, 0, canvas.width, canvas.height)
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('تعذر تجهيز الصورة.')),
+          'image/jpeg', Math.max(0.5, 0.86 - attempt * 0.07))
+      })
+      if (blob.size <= maxBytes) {
+        const name = image.name.replace(/\.[^.]+$/, '') || 'service-image'
+        return new File([blob], `${name}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
+      }
+    }
+    throw new Error('تعذر تصغير الصورة للحجم المطلوب. جرّب صورة أصغر.')
+  } finally {
+    bitmap.close()
+  }
+}
 
 function AdminServicesPage() {
   const [services, setServices] = useState<Service[]>([])
@@ -11,8 +55,97 @@ function AdminServicesPage() {
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null)
+  const [imageCrop, setImageCrop] = useState<ServiceImageCrop>({ centerX: 0.5, centerY: 0.5, size: 1 })
+  const imageEditorRef = useRef<HTMLDivElement>(null)
+  const cropDragRef = useRef<{
+    mode: 'move' | 'resize'
+    pointerX: number
+    pointerY: number
+    left: number
+    top: number
+    side: number
+    imageWidth: number
+    imageHeight: number
+    signX: number
+    signY: number
+  } | null>(null)
   const activeServices = services.filter((service) => service.active)
   const visibleServices = showArchived ? services : activeServices
+  const cropStageRect = imageEditorRef.current?.getBoundingClientRect()
+  const cropImageScale = imageDimensions && cropStageRect
+    ? Math.min(cropStageRect.width / imageDimensions.width, cropStageRect.height / imageDimensions.height)
+    : 0
+  const cropImageWidth = imageDimensions ? imageDimensions.width * cropImageScale : 0
+  const cropImageHeight = imageDimensions ? imageDimensions.height * cropImageScale : 0
+  const cropBoxSide = Math.min(cropImageWidth, cropImageHeight) * imageCrop.size
+  const cropBoxLeft = (cropStageRect ? (cropStageRect.width - cropImageWidth) / 2 : 0)
+    + imageCrop.centerX * cropImageWidth - cropBoxSide / 2
+  const cropBoxTop = (cropStageRect ? (cropStageRect.height - cropImageHeight) / 2 : 0)
+    + imageCrop.centerY * cropImageHeight - cropBoxSide / 2
+
+  const startCropPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (!imageFile || !imageDimensions || !imageEditorRef.current) return
+    const image = imageEditorRef.current.querySelector('img')
+    if (!image) return
+    const imageRect = image.getBoundingClientRect()
+    const selection = event.target instanceof HTMLElement ? event.target.closest('[data-crop-selection]') : null
+    if (!selection) return
+    const corner = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-crop-corner]')?.dataset.cropCorner : undefined
+    const side = Math.min(imageRect.width, imageRect.height) * imageCrop.size
+    const imageX = imageCrop.centerX * imageRect.width - side / 2
+    const imageY = imageCrop.centerY * imageRect.height - side / 2
+    const signX = corner?.includes('l') ? -1 : 1
+    const signY = corner?.includes('t') ? -1 : 1
+    cropDragRef.current = {
+      mode: corner ? 'resize' : 'move',
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      left: imageX,
+      top: imageY,
+      side,
+      imageWidth: imageRect.width,
+      imageHeight: imageRect.height,
+      signX,
+      signY,
+    }
+    imageEditorRef.current.setPointerCapture(event.pointerId)
+    event.preventDefault()
+  }
+
+  const moveCropPointer = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = cropDragRef.current
+    if (!drag) return
+    const deltaX = event.clientX - drag.pointerX
+    const deltaY = event.clientY - drag.pointerY
+    let left = drag.left
+    let top = drag.top
+    let side = drag.side
+
+    if (drag.mode === 'move') {
+      left = Math.max(0, Math.min(drag.imageWidth - side, left + deltaX))
+      top = Math.max(0, Math.min(drag.imageHeight - side, top + deltaY))
+    } else {
+      const anchorX = drag.signX < 0 ? drag.left + drag.side : drag.left
+      const anchorY = drag.signY < 0 ? drag.top + drag.side : drag.top
+      const maxSide = Math.min(
+        drag.signX < 0 ? anchorX : drag.imageWidth - anchorX,
+        drag.signY < 0 ? anchorY : drag.imageHeight - anchorY,
+      )
+      side = Math.max(Math.min(56, maxSide), Math.min(maxSide,
+        drag.side + (drag.signX * deltaX + drag.signY * deltaY) / 2))
+      left = drag.signX < 0 ? anchorX - side : anchorX
+      top = drag.signY < 0 ? anchorY - side : anchorY
+    }
+
+    setImageCrop({
+      centerX: (left + side / 2) / drag.imageWidth,
+      centerY: (top + side / 2) / drag.imageHeight,
+      size: side / Math.min(drag.imageWidth, drag.imageHeight),
+    })
+  }
 
   const load = async () => {
     try {
@@ -44,18 +177,25 @@ function AdminServicesPage() {
     setError('')
     setNotice('')
     try {
+      let savedService: Service
       if (editing) {
-        await apiRequest(`/api/services/${editing.id}`, { method: 'PUT', body: JSON.stringify(request) })
-        setNotice('تم تحديث الخدمة.')
+        savedService = await apiRequest<Service>(`/api/services/${editing.id}`, { method: 'PUT', body: JSON.stringify(request) })
       } else {
-        await apiRequest('/api/services', { method: 'POST', body: JSON.stringify(request) })
-        setNotice('تمت إضافة الخدمة.')
+        savedService = await apiRequest<Service>('/api/services', { method: 'POST', body: JSON.stringify(request) })
       }
+      const image = formData.get('image')
+      if (image instanceof File && image.size > 0) {
+        const upload = new FormData()
+        upload.append('image', await prepareServiceImage(image, imageCrop))
+        await apiRequest<void>(`/api/services/${savedService.id}/image`, { method: 'PUT', body: upload })
+      }
+      setNotice(editing ? 'تم تحديث الخدمة.' : 'تمت إضافة الخدمة.')
       setEditing(null)
       setModalOpen(false)
+      setImagePreview(null)
       await load()
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر حفظ الخدمة.'))
+      setError(getErrorMessage(cause, cause instanceof Error ? cause.message : 'تعذر حفظ الخدمة.'))
     } finally {
       setBusy(false)
     }
@@ -103,6 +243,9 @@ function AdminServicesPage() {
       <div className="admin-services-toolbar">
         <button className="admin-secondary-button" type="button" onClick={() => {
           setEditing(null)
+          setImagePreview(null)
+          setImageFile(null)
+          setImageDimensions(null)
           setError('')
           setModalOpen(true)
         }}><Plus size={16} /> إضافة خدمة</button>
@@ -135,6 +278,9 @@ function AdminServicesPage() {
                 <div className="admin-inline-actions">
                   <button className="admin-secondary-button" type="button" disabled={busy} onClick={() => {
                     setEditing(service)
+                    setImagePreview(service.imageUrl)
+                    setImageFile(null)
+                    setImageDimensions(null)
                     setError('')
                     setModalOpen(true)
                   }}>تعديل</button>
@@ -159,6 +305,33 @@ function AdminServicesPage() {
             </div>
             {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
             <form className="admin-form" key={editing?.id ?? 'new'} onSubmit={(event) => void save(event)}>
+              <div className="service-image-field">
+                <label htmlFor="service-image-input">صورة الخدمة (اختيارية)</label>
+                <input id="service-image-input" name="image" type="file" accept="image/*" onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  setImageFile(file ?? null)
+                  setImagePreview(file ? URL.createObjectURL(file) : editing?.imageUrl ?? null)
+                  setImageDimensions(null)
+                  setImageCrop({ centerX: 0.5, centerY: 0.5, size: 1 })
+                }} />
+                {imagePreview ? <div className="service-image-crop-stage" ref={imageEditorRef}
+                  onPointerDown={startCropPointer} onPointerMove={moveCropPointer}
+                  onPointerUp={() => { cropDragRef.current = null }}
+                  onPointerCancel={() => { cropDragRef.current = null }}>
+                  <img src={imagePreview} alt={imageFile ? 'حدد الجزء المربع الظاهر من الصورة' : 'صورة الخدمة الحالية'}
+                    onLoad={(event) => {
+                      const { naturalWidth, naturalHeight } = event.currentTarget
+                      if (naturalWidth && naturalHeight) setImageDimensions({ width: naturalWidth, height: naturalHeight })
+                    }} />
+                  {imageFile && imageDimensions && <div className="service-image-crop-selection" data-crop-selection
+                    style={{ left: `${cropBoxLeft}px`, top: `${cropBoxTop}px`, width: `${cropBoxSide}px`, height: `${cropBoxSide}px` }}>
+                    {(['tl', 'tr', 'bl', 'br'] as const).map((corner) => <span key={corner}
+                      className={`service-image-crop-handle service-image-crop-handle--${corner}`} data-crop-corner={corner} />)}
+                  </div>}
+                </div> : <span className="service-image-current-placeholder"><Scissors size={26} aria-hidden="true" /></span>}
+                {imageFile && <small>اسحب المربع لتحريكه، واسحب إحدى زواياه لتغيير حجمه.</small>}
+                {!imageFile && <small>اختر صورة من الهاتف أو الكمبيوتر لتحديد الجزء المربع الذي سيظهر.</small>}
+              </div>
               <label>اسم الخدمة<input name="name" minLength={2} maxLength={150} defaultValue={editing?.name} required /></label>
               <label>الوصف (اختياري)<textarea name="description" rows={3} maxLength={10000} defaultValue={editing?.description} /></label>
               <label>السعر (₪)<input name="price" type="number" min="0" step="0.01" defaultValue={editing?.price} required /></label>

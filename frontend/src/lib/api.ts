@@ -44,6 +44,7 @@ export interface Service {
   durationMinutes: number
   active: boolean
   createdAt: string
+  imageUrl: string | null
 }
 
 export type BookingMode =

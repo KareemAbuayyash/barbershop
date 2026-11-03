@@ -79,6 +79,7 @@ public class SecurityConfiguration {
 				.authorizeHttpRequests(authorize -> authorize
 						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/services/manage").hasRole("OWNER")
+						.requestMatchers(HttpMethod.GET, "/api/services/*/image").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/services", "/api/services/*").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/booking-settings").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/shop-profile").permitAll()
@@ -104,6 +105,7 @@ public class SecurityConfiguration {
 						.requestMatchers(HttpMethod.PUT, "/api/bookings/*/schedule").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PATCH, "/api/services/archive").hasRole("OWNER")
 						.requestMatchers(HttpMethod.POST, "/api/services").hasRole("OWNER")
+						.requestMatchers(HttpMethod.PUT, "/api/services/*/image").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PUT, "/api/services/*").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PATCH, "/api/services/*/active").hasRole("OWNER")
 						.requestMatchers(HttpMethod.PUT, "/api/booking-settings").hasRole("OWNER")

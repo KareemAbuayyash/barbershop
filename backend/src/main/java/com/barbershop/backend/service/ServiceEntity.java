@@ -38,6 +38,9 @@ public class ServiceEntity {
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
 
+	@Column(name = "image_content_type", length = 100)
+	private String imageContentType;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -84,6 +87,14 @@ public class ServiceEntity {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public String getImageContentType() {
+		return imageContentType;
+	}
+
+	public void setImageContentType(String imageContentType) {
+		this.imageContentType = imageContentType;
 	}
 
 	public void setName(String name) {

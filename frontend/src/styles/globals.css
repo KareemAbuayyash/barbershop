@@ -465,8 +465,8 @@ button {
 
 .service-card {
   position: relative;
-  min-height: 248px;
-  padding: 23px 22px 20px;
+  min-height: 335px;
+  overflow: hidden;
   border: 1px solid var(--color-border);
   background: var(--color-card);
   transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease;
@@ -483,6 +483,67 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.service-card-image {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-border);
+  background: linear-gradient(145deg, #28251d, #171613 70%);
+}
+
+.service-card-image > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 350ms ease;
+}
+
+.service-card:hover .service-card-image > img {
+  transform: scale(1.04);
+}
+
+.service-card-image-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(219, 194, 137, 0.48);
+  background: radial-gradient(ellipse at center, rgba(195, 166, 107, 0.12), transparent 62%);
+}
+
+.service-card-image:has(> img:not([style*="display: none"])) .service-card-image-placeholder {
+  opacity: 0;
+}
+
+.service-card-top {
+  position: absolute;
+  inset: 12px 13px auto;
+}
+
+.service-card-top .service-number,
+.service-card-top .service-icon {
+  border: 1px solid rgba(219, 194, 137, 0.32);
+  border-radius: 3px;
+  background: rgba(16, 16, 15, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.service-card-top .service-number {
+  padding: 7px 9px;
+  color: var(--color-gold-light);
+}
+
+.service-card-top .service-icon {
+  width: 33px;
+  height: 33px;
+}
+
+.service-card-content {
+  padding: 17px 19px 18px;
 }
 
 .service-number,
@@ -505,13 +566,14 @@ button {
 
 .service-card h3,
 .booking-card h3 {
-  margin: 22px 0 8px;
+  margin: 0 0 7px;
   color: var(--color-text);
   font-size: 18px;
   font-weight: 500;
 }
 
 .service-card > p,
+.service-card-content > p,
 .booking-card > p {
   min-height: 49px;
   color: var(--color-muted);
@@ -524,8 +586,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 9px;
-  margin-top: 19px;
-  padding-top: 14px;
+  margin-top: 12px;
+  padding-top: 11px;
   border-top: 1px solid var(--color-border);
   color: var(--color-subtle);
   font-size: 10px;
@@ -547,6 +609,85 @@ button {
   color: var(--color-gold-light);
   font-size: 12px;
   font-weight: 500;
+}
+
+.service-image-field input {
+  padding: 10px;
+  border: 1px dashed var(--color-border);
+  background: var(--color-card);
+}
+
+.service-image-field {
+  display: grid;
+  gap: 8px;
+}
+
+.service-image-field small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.service-image-crop-stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 280px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  color: var(--color-gold);
+  background: linear-gradient(145deg, #28251d, #171613 70%);
+  touch-action: none;
+}
+
+.service-image-crop-stage > img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.service-image-current-placeholder {
+  display: grid;
+  width: 100%;
+  height: 180px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  color: var(--color-gold);
+  background: linear-gradient(145deg, #28251d, #171613 70%);
+}
+
+.service-image-crop-selection {
+  position: absolute;
+  z-index: 1;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+  cursor: move;
+  touch-action: none;
+}
+
+.service-image-crop-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #24211b;
+  border-radius: 50%;
+  background: #fff;
+  touch-action: none;
+}
+
+.service-image-crop-handle--tl { top: -8px; left: -8px; cursor: nwse-resize; }
+.service-image-crop-handle--tr { top: -8px; right: -8px; cursor: nesw-resize; }
+.service-image-crop-handle--bl { bottom: -8px; left: -8px; cursor: nesw-resize; }
+.service-image-crop-handle--br { bottom: -8px; right: -8px; cursor: nwse-resize; }
+
+.service-image-crop-selection,
+.service-image-crop-handle {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .service-link {
@@ -1821,7 +1962,7 @@ button {
   }
 
   .service-card {
-    min-height: 225px;
+    min-height: 0;
   }
 
   .footer-main {
@@ -1946,11 +2087,15 @@ button {
 
   .service-card,
   .booking-card {
-    padding: 18px;
+    padding: 0;
   }
 
   .service-card {
-    min-height: 235px;
+    min-height: 0;
+  }
+
+  .service-card-content {
+    padding: 15px;
   }
 
   .service-meta {
@@ -2064,10 +2209,14 @@ button {
 
   .service-card {
     min-height: 0;
-    padding: 20px;
+    padding: 0;
   }
 
-  .service-card > p,
+  .service-card-content {
+    padding: 18px;
+  }
+
+  .service-card-content > p,
   .booking-card > p {
     min-height: 0;
   }

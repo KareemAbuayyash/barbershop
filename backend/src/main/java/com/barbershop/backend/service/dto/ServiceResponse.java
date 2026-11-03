@@ -11,5 +11,6 @@ public record ServiceResponse(
 		BigDecimal price,
 		int durationMinutes,
 		boolean active,
-		Instant createdAt) {
+		Instant createdAt,
+		String imageUrl) {
 }

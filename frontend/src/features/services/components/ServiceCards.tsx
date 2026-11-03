@@ -49,15 +49,22 @@ function ServiceCards({ limit }: ServiceCardsProps) {
     <div className={`service-grid${limit ? ' service-grid--preview' : ''}`}>
       {visibleServices.map((service, index) => (
         <article className="service-card" key={service.id}>
-          <div className="service-card-top">
-            <span className="service-number">{String(index + 1).padStart(2, '0')}</span>
-            <span className="service-icon" aria-hidden="true"><Scissors size={19} strokeWidth={1.5} /></span>
+          <div className="service-card-image">
+            {service.imageUrl && <img src={service.imageUrl} alt={service.name} loading="lazy"
+              onError={(event) => { event.currentTarget.style.display = 'none' }} />}
+            <div className="service-card-image-placeholder" aria-hidden="true"><Scissors size={31} strokeWidth={1.3} /></div>
+            <div className="service-card-top">
+              <span className="service-number">{String(index + 1).padStart(2, '0')}</span>
+              <span className="service-icon" aria-hidden="true"><Scissors size={17} strokeWidth={1.5} /></span>
+            </div>
           </div>
-          <h3>{service.name}</h3>
-          <p>{service.description}</p>
-          <div className="service-meta">
-            <span className="service-duration"><Clock3 size={14} aria-hidden="true" />{service.durationMinutes} دقيقة</span>
-            <span className="service-price"><b>{priceFormatter.format(service.price)}</b></span>
+          <div className="service-card-content">
+            <h3>{service.name}</h3>
+            {service.description && <p>{service.description}</p>}
+            <div className="service-meta">
+              <span className="service-duration"><Clock3 size={14} aria-hidden="true" />{service.durationMinutes} دقيقة</span>
+              <span className="service-price"><b>{priceFormatter.format(service.price)}</b></span>
+            </div>
           </div>
         </article>
       ))}
