@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { Bell, CalendarDays, Check, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { apiRequest, getErrorMessage, type BookingMode, type BookingStatus } from '../../../lib/api'
 import { formatShopDateTime, getShopDate, isoToShopLocalDateTime } from '../../../lib/shop-time'
@@ -111,6 +111,7 @@ function AdminBookingsPage() {
   const [busyBookingId, setBusyBookingId] = useState('')
   const [editingBookingId, setEditingBookingId] = useState('')
   const [confirmingBookingId, setConfirmingBookingId] = useState('')
+  const [remindingBookingId, setRemindingBookingId] = useState('')
   const [completingBookingId, setCompletingBookingId] = useState('')
   const [checkoutLines, setCheckoutLines] = useState<CheckoutLine[]>([])
   const [checkoutAmount, setCheckoutAmount] = useState('')
@@ -241,6 +242,20 @@ function AdminBookingsPage() {
     } catch (cause) {
       setError(getErrorMessage(cause, 'تعذر تحديث حالة الحجز.'))
     } finally { setBusyBookingId('') }
+  }
+
+  const remindCustomer = async (booking: AdminBooking) => {
+    setRemindingBookingId(booking.id)
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest<void>(`/api/admin/bookings/${booking.id}/reminder`, { method: 'POST' })
+      setNotice(`تم إرسال تذكير الموعد إلى ${booking.customerName}.`)
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'تعذر إرسال تذكير الموعد.'))
+    } finally {
+      setRemindingBookingId('')
+    }
   }
 
   const checkoutBooking = async (event: FormEvent<HTMLFormElement>, booking: AdminBooking) => {
@@ -519,6 +534,12 @@ function AdminBookingsPage() {
                         setError('')
                         setNotice('')
                       }}><Check size={16} /></button>}
+                    {booking.status === 'CONFIRMED' && booking.startsAt && <button type="button" className="admin-icon-button"
+                      aria-label="إرسال تذكير للزبون بأن موعده اقترب" title="إرسال تذكير للزبون"
+                      disabled={remindingBookingId === booking.id || busyBookingId === booking.id}
+                      onClick={() => void remindCustomer(booking)}>
+                      {remindingBookingId === booking.id ? <span className="admin-reminder-spinner" /> : <Bell size={16} />}
+                    </button>}
                     {(booking.status === 'PENDING' || booking.status === 'CONFIRMED') && <button type="button"
                       className="admin-icon-button admin-icon-button--danger" aria-label="إلغاء الحجز"
                       title="إلغاء الحجز" disabled={busyBookingId === booking.id}

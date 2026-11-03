@@ -279,12 +279,24 @@ public class NotificationService {
 	public void notifyBookingConfirmed(UUID bookingId) {
 		BookingNotificationDetails booking = findBookingNotification(bookingId);
 		if (booking == null) return;
-		String eventKey = "booking:" + booking.id() + ":confirmed";
+		String eventKey = "booking:" + booking.id() + ":confirmed:" + UUID.randomUUID();
 		String body = booking.serviceName() + " · " + formatBookingTime(booking);
 		notifyOwner("BOOKING_CONFIRMED", eventKey, "تم تأكيد الحجز",
 				booking.customerName() + " · " + body, "/owner/bookings");
 		notifyBookingCustomerOrGuest(booking, "BOOKING_CONFIRMED", eventKey,
 				"تم تأكيد حجزك", body, "/my-bookings");
+	}
+
+	@Transactional
+	public void notifyBookingIsApproaching(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found.");
+		String eventKey = "booking:" + booking.id() + ":manual-reminder:" + UUID.randomUUID();
+		String appointment = formatBookingTime(booking);
+		String body = booking.serviceName() + (appointment.isBlank() ? "" : " · " + appointment)
+				+ " · موعدك اقترب، بانتظار حضورك إلى المحل.";
+		notifyBookingCustomerOrGuest(booking, "BOOKING_REMINDER", eventKey,
+				"تذكير: موعدك اقترب", body, "/my-bookings");
 	}
 
 	public void notifyBookingRejected(UUID bookingId) {
@@ -306,6 +318,24 @@ public class NotificationService {
 				booking.customerName() + " · " + body, "/owner/bookings");
 		notifyBookingCustomerOrGuest(booking, "BOOKING_RESCHEDULED", eventKey,
 				"تم تعديل موعد حجزك", body, "/my-bookings");
+	}
+
+	@Transactional
+	public void notifyCustomerRequestedReschedule(UUID bookingId, LocalDate preferredDate, Instant preferredTime, String reason) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null) return;
+		String eventKey = "booking:" + booking.id() + ":customer-reschedule:" + UUID.randomUUID();
+		String requestedTime = preferredDate.toString()
+				+ (preferredTime == null ? " (دون وقت محدد)" : " · "
+				+ DateTimeFormatter.ofPattern("HH:mm").format(preferredTime.atZone(java.time.ZoneId.of("Asia/Hebron"))));
+		String reasonText = reason == null || reason.isBlank() ? "" : " · السبب: " + reason.trim();
+		notifyOwner("BOOKING_RESCHEDULED", eventKey, "طلب الزبون تأجيل الحجز",
+				booking.customerName() + " طلب التأجيل إلى " + requestedTime + reasonText,
+				"/owner/bookings");
+		notifyBookingCustomerOrGuest(booking, "BOOKING_RESCHEDULED", eventKey,
+				"تم استلام طلب التأجيل",
+				"أصبح حجزك بانتظار التأكيد. طلبت الموعد " + requestedTime
+						+ reasonText + ". سيؤكد المحل الموعد أو يقترح موعداً آخر.", "/my-bookings");
 	}
 
 	@Transactional

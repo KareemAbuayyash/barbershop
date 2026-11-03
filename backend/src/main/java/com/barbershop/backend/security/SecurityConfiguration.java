@@ -91,6 +91,7 @@ public class SecurityConfiguration {
 								"/api/auth/logout").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 						.requestMatchers(HttpMethod.GET, "/api/customer/bookings", "/api/customer/profile").hasRole("CUSTOMER")
+						.requestMatchers("/api/customer/bookings/**").hasRole("CUSTOMER")
 						.requestMatchers("/api/guest-notifications/**").permitAll()
 						.requestMatchers("/api/notifications/**").hasAnyRole("OWNER", "CUSTOMER")
 						.requestMatchers("/api/admin/**").hasRole("OWNER")

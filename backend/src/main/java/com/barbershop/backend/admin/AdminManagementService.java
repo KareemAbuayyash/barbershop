@@ -776,6 +776,18 @@ public class AdminManagementService {
 		notificationService.notifyDebtReminder(bookingId, balance);
 	}
 
+	@Transactional
+	public void sendBookingReminder(UUID bookingId) {
+		Boolean confirmedAppointment = jdbc.queryForObject("""
+				SELECT EXISTS (SELECT 1 FROM bookings
+				WHERE id = ? AND status = 'CONFIRMED' AND starts_at IS NOT NULL)
+				""", Boolean.class, bookingId);
+		if (!Boolean.TRUE.equals(confirmedAppointment)) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "Only confirmed appointments can be reminded.");
+		}
+		notificationService.notifyBookingIsApproaching(bookingId);
+	}
+
 	@Transactional(readOnly = true)
 	public List<Expense> expenses(LocalDate fromDate, LocalDate toDate) {
 		validateDateRange(fromDate, toDate);

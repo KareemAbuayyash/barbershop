@@ -21,6 +21,7 @@ import com.barbershop.backend.admin.NotificationService;
 import com.barbershop.backend.booking.dto.BookingManagementResponse;
 import com.barbershop.backend.booking.dto.BookingPageResponse;
 import com.barbershop.backend.booking.dto.BookingScheduleUpdateRequest;
+import com.barbershop.backend.booking.dto.CustomerRescheduleRequest;
 import com.barbershop.backend.booking.dto.ConfirmBookingRequest;
 import com.barbershop.backend.booking.dto.QueueReorderRequest;
 
@@ -184,6 +185,78 @@ public class BookingManagementService {
 			notificationService.notifyBookingCancelled(saved.getId());
 		}
 		return toResponse(saved);
+	}
+
+	@Transactional
+	public BookingManagementResponse cancelByCustomer(UUID id, String username) {
+		Booking booking = findForLifecycleUpdate(id);
+		requireBookingOwner(booking, username);
+		if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+			throw conflict("Booking cannot be cancelled", "Only pending or confirmed bookings can be cancelled.");
+		}
+		LocalDate queueDate = booking.getQueueDate();
+		if (queueDate != null) {
+			jdbcTemplate.execute("SET CONSTRAINTS uq_bookings_queue_date_position DEFERRED");
+			booking.setQueuePosition(null);
+		}
+		booking.setStatus(BookingStatus.CANCELLED);
+		Booking saved = bookingRepository.saveAndFlush(booking);
+		if (queueDate != null) compactQueue(queueDate);
+		notificationService.notifyBookingCancelled(saved.getId());
+		return toResponse(saved);
+	}
+
+	@Transactional
+	public BookingManagementResponse requestRescheduleByCustomer(
+			UUID id, String username, CustomerRescheduleRequest request) {
+		Booking booking = findForLifecycleUpdate(id);
+		requireBookingOwner(booking, username);
+		if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+			throw conflict("Booking cannot be rescheduled", "Only pending or confirmed bookings can be rescheduled.");
+		}
+		if (booking.getBookingMode() == BookingMode.DAY_QUEUE || booking.getBookingMode() == BookingMode.SAME_DAY_QUEUE) {
+			throw conflict("Booking cannot be rescheduled", "Daily queue bookings must be rescheduled by the shop.");
+		}
+		if (request.preferredDate().isBefore(LocalDate.now(SHOP_ZONE))) {
+			throw badRequest("Invalid preferred date", "Preferred date must not be before today.");
+		}
+		Instant requestedStart = request.startsAt();
+		if (requestedStart != null) {
+			if (!LocalDate.ofInstant(requestedStart, SHOP_ZONE).equals(request.preferredDate())) {
+				throw badRequest("Invalid preferred time", "The selected time must be on the requested day.");
+			}
+			requireFutureStart(requestedStart);
+			shopScheduleService.requireAppointmentTime(requestedStart,
+					booking.getServiceDurationSnapshotMinutes(), booking.getId());
+		} else {
+			ShopScheduleService.Availability availability = shopScheduleService.availabilityForBooking(
+					request.preferredDate(), booking.getService().getId(), booking.getId());
+			if (!availability.open() || availability.slots().isEmpty()) {
+				throw conflict("No available appointment", "There are no available times on the requested day.");
+			}
+			requestedStart = availability.slots().getFirst().startsAt();
+		}
+		String requestNote = "طلب تأجيل إلى " + request.preferredDate()
+				+ " الساعة " + java.time.LocalDateTime.ofInstant(requestedStart, SHOP_ZONE).toLocalTime()
+				+ (request.reason() == null || request.reason().isBlank() ? "" : " · السبب: " + request.reason().trim());
+		String oldNote = booking.getNotes();
+		booking.setNotes(oldNote == null || oldNote.isBlank() ? requestNote : oldNote + "\n" + requestNote);
+		booking.setStartsAt(requestedStart);
+		if (booking.getBookingMode() == BookingMode.CONFIRMATION_REQUEST) {
+			booking.setPreferredDate(request.preferredDate());
+		}
+		booking.setStatus(BookingStatus.PENDING);
+		Booking saved = bookingRepository.saveAndFlush(booking);
+		notificationService.notifyCustomerRequestedReschedule(saved.getId(), request.preferredDate(), requestedStart, request.reason());
+		return toResponse(saved);
+	}
+
+	private void requireBookingOwner(Booking booking, String username) {
+		if (booking.getCustomerAccount() == null
+				|| !booking.getCustomerAccount().getUsernameNormalized().equals(username)) {
+			throw new BookingApiException(org.springframework.http.HttpStatus.NOT_FOUND,
+					"Booking not found", "Booking not found.");
+		}
 	}
 
 	@Transactional

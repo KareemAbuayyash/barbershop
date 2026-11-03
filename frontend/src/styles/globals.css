@@ -1478,12 +1478,94 @@ button {
 }
 
 .owner-booking-actions,
+.customer-booking-actions,
 .owner-confirm-form,
 .queue-reorder-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: 9px;
+}
+
+.customer-booking-actions {
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(224, 209, 175, .1);
+}
+
+.button--danger-outline {
+  border-color: rgba(220, 100, 100, .32);
+  color: #e3aaa4;
+  background: transparent;
+}
+
+.button--danger-outline:hover {
+  border-color: rgba(220, 100, 100, .65);
+  color: #f2c5bf;
+  background: rgba(220, 100, 100, .07);
+}
+
+.customer-action-modal-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, .76);
+  backdrop-filter: blur(5px);
+}
+
+.customer-action-modal {
+  position: relative;
+  width: min(100%, 480px);
+  max-height: min(88vh, 720px);
+  overflow-y: auto;
+  padding: 30px;
+  border: 1px solid rgba(195, 166, 107, .35);
+  border-radius: 15px;
+  background: linear-gradient(145deg, #201f1b, #11110f);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .52);
+}
+
+.customer-action-modal h2 { margin: 8px 0; font-size: 22px; }
+.customer-action-modal > p { margin: 0 0 18px; color: var(--color-muted); }
+.customer-action-modal > label { display: grid; gap: 7px; margin-top: 15px; color: #d2c9b8; font-size: 12px; }
+.customer-action-modal input,
+.customer-action-modal select,
+.customer-action-modal textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid rgba(224, 209, 175, .18);
+  border-radius: 8px;
+  background: #11110f;
+  color: #eeeae1;
+  color-scheme: dark;
+  font: inherit;
+}
+.customer-action-modal textarea { resize: vertical; }
+.customer-action-modal > small { display: block; margin-top: 8px; color: var(--color-muted); line-height: 1.6; }
+.customer-action-modal-close {
+  position: absolute;
+  top: 14px;
+  inset-inline-end: 14px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: #d7c18e;
+  cursor: pointer;
+}
+.customer-action-modal-buttons { display: flex; flex-wrap: wrap; gap: 9px; justify-content: flex-start; margin-top: 22px; }
+
+@media (max-width: 520px) {
+  .customer-action-modal { padding: 26px 18px 20px; }
+  .customer-action-modal-buttons > button { flex: 1 1 130px; }
 }
 
 .owner-confirm-form {

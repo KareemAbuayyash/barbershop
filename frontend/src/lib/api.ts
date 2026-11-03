@@ -22,6 +22,7 @@ export interface CurrentUser {
 
 export interface CustomerBooking {
   id: string
+  serviceId: string
   bookingMode: BookingMode | 'LEGACY'
   status: BookingStatus
   startsAt: string | null

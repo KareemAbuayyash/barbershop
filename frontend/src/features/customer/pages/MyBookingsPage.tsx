@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarDays } from 'lucide-react'
+import { CalendarClock, CalendarDays, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import PageIntro from '../../../components/ui/PageIntro'
 import { apiRequest, getErrorMessage, type CustomerBooking } from '../../../lib/api'
-import { formatShopDateTime } from '../../../lib/shop-time'
+import { formatShopDateTime, getShopDate } from '../../../lib/shop-time'
 
 const bookingModes: Record<CustomerBooking['bookingMode'], string> = {
   EXACT_APPOINTMENT: 'موعد محدد',
@@ -21,9 +21,30 @@ const bookingStatuses: Record<CustomerBooking['status'], string> = {
 }
 
 function MyBookingsPage() {
+  const [actionBooking, setActionBooking] = useState<{ booking: CustomerBooking; action: 'cancel' | 'reschedule' } | null>(null)
+  const [rescheduleDate, setRescheduleDate] = useState(getShopDate())
+  const [rescheduleTime, setRescheduleTime] = useState('')
+  const [rescheduleReason, setRescheduleReason] = useState('')
+  const [availableSlots, setAvailableSlots] = useState<Array<{ startsAt: string; localTime: string }>>([])
+  const [loadingSlots, setLoadingSlots] = useState(false)
   const [bookings, setBookings] = useState<CustomerBooking[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [busyBookingId, setBusyBookingId] = useState('')
+
+  useEffect(() => {
+    if (actionBooking?.action !== 'reschedule') return
+    let active = true
+    setLoadingSlots(true)
+    setRescheduleTime('')
+    const params = new URLSearchParams({ date: rescheduleDate, serviceId: actionBooking.booking.serviceId })
+    void apiRequest<{ open: boolean; slots: Array<{ startsAt: string; localTime: string }> }>(`/api/bookings/availability?${params}`)
+      .then((result) => { if (active) setAvailableSlots(result.slots) })
+      .catch(() => { if (active) setAvailableSlots([]) })
+      .finally(() => { if (active) setLoadingSlots(false) })
+    return () => { active = false }
+  }, [actionBooking, rescheduleDate])
 
   const loadBookings = useCallback(async () => {
     try {
@@ -36,6 +57,35 @@ function MyBookingsPage() {
       setIsLoading(false)
     }
   }, [])
+
+  const runBookingAction = (booking: CustomerBooking, action: 'cancel' | 'reschedule') => {
+    setActionBooking({ booking, action })
+    setRescheduleDate(getShopDate())
+    setRescheduleTime('')
+    setRescheduleReason('')
+  }
+
+  const submitBookingAction = async () => {
+    if (!actionBooking) return
+    const { booking, action } = actionBooking
+    const isReschedule = action === 'reschedule'
+    setBusyBookingId(booking.id)
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/api/customer/bookings/${booking.id}/${isReschedule ? 'reschedule-request' : 'cancel'}`, {
+        method: 'PATCH',
+        ...(isReschedule ? { body: JSON.stringify({ preferredDate: rescheduleDate, startsAt: rescheduleTime || null, reason: rescheduleReason.trim() || null }) } : {}),
+      })
+      setNotice(isReschedule ? 'تم إرسال طلب التأجيل للمحل.' : 'تم إلغاء الحجز.')
+      setActionBooking(null)
+      await loadBookings()
+    } catch (cause) {
+      setError(getErrorMessage(cause, isReschedule ? 'تعذر إرسال طلب التأجيل.' : 'تعذر إلغاء الحجز.'))
+    } finally {
+      setBusyBookingId('')
+    }
+  }
 
   useEffect(() => {
     const refreshWhenVisible = () => {
@@ -63,6 +113,7 @@ function MyBookingsPage() {
         description="تابع حالة حجوزاتك ومواعيدك في المحل."
       />
       <section className="container customer-bookings" aria-label="قائمة حجوزاتي">
+        {notice && <p className="api-state" role="status">{notice}</p>}
         {isLoading ? (
           <p className="api-state" role="status">جارٍ تحميل حجوزاتك...</p>
         ) : error ? (
@@ -105,11 +156,54 @@ function MyBookingsPage() {
                     {booking.ownerNote && <p><strong>ملاحظة من المحل:</strong> {booking.ownerNote}</p>}
                   </div>
                 )}
+                {(booking.status === 'PENDING' || booking.status === 'CONFIRMED') && (
+                  <div className="customer-booking-actions">
+                    <button className="button button--secondary" type="button" disabled={busyBookingId === booking.id}
+                      onClick={() => void runBookingAction(booking, 'reschedule')}>
+                      <CalendarClock size={16} /> طلب تأجيل
+                    </button>
+                    <button className="button button--danger-outline" type="button" disabled={busyBookingId === booking.id}
+                      onClick={() => void runBookingAction(booking, 'cancel')}>
+                      <X size={16} /> إلغاء الحجز
+                    </button>
+                  </div>
+                )}
               </article>
             ))}
           </div>
         )}
       </section>
+      {actionBooking && <div className="customer-action-modal-backdrop" role="presentation"
+        onMouseDown={(event) => { if (event.target === event.currentTarget) setActionBooking(null) }}>
+        <section className="customer-action-modal" role="dialog" aria-modal="true" dir="rtl"
+          aria-labelledby="customer-booking-action-title">
+          <button className="customer-action-modal-close" type="button" aria-label="إغلاق" onClick={() => setActionBooking(null)}><X size={19} /></button>
+          <span className="page-intro-eyebrow">حجوزاتي</span>
+          <h2 id="customer-booking-action-title">{actionBooking.action === 'cancel' ? 'إلغاء الحجز' : 'طلب تأجيل الموعد'}</h2>
+          <p>{actionBooking.booking.serviceName}</p>
+          {actionBooking.action === 'reschedule' ? <>
+            <label>اليوم الذي يناسبك<input type="date" min={getShopDate()} value={rescheduleDate}
+              onChange={(event) => setRescheduleDate(event.target.value)} required /></label>
+            <label>الوقت (اختياري)<select value={rescheduleTime} onChange={(event) => setRescheduleTime(event.target.value)}>
+              <option value="">اختر اليوم فقط — اقترح أول وقت متاح</option>
+              {availableSlots.map((slot) => <option key={slot.startsAt} value={slot.startsAt}>{slot.localTime}</option>)}
+            </select></label>
+            {loadingSlots && <small role="status">جارٍ تحميل الأوقات المتاحة...</small>}
+            {!loadingSlots && !availableSlots.length && <small>لا توجد أوقات متاحة لهذا اليوم؛ اختر يوماً آخر.</small>}
+            <label>سبب التأجيل (اختياري)<textarea maxLength={500} rows={3} value={rescheduleReason}
+              onChange={(event) => setRescheduleReason(event.target.value)} placeholder="اكتب سبب التأجيل إن رغبت" /></label>
+          </> : <p>هل تريد إلغاء هذا الحجز؟</p>}
+          <div className="customer-action-modal-buttons">
+            <button className="button button--secondary" type="button" onClick={() => setActionBooking(null)}>رجوع</button>
+            <button className={actionBooking.action === 'cancel' ? 'button button--danger-outline' : 'button button--primary'}
+              type="button" disabled={busyBookingId === actionBooking.booking.id || loadingSlots
+                || (actionBooking.action === 'reschedule' && (!rescheduleDate || !availableSlots.length))}
+              onClick={() => void submitBookingAction()}>
+              {busyBookingId === actionBooking.booking.id ? 'جارٍ الإرسال...' : actionBooking.action === 'cancel' ? 'تأكيد الإلغاء' : 'إرسال طلب التأجيل'}
+            </button>
+          </div>
+        </section>
+      </div>}
     </div>
   )
 }

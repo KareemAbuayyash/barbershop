@@ -10,6 +10,7 @@ import com.barbershop.backend.booking.BookingStatus;
 
 public record CustomerBookingResponse(
 		UUID id,
+		UUID serviceId,
 		BookingMode bookingMode,
 		BookingStatus status,
 		Instant startsAt,

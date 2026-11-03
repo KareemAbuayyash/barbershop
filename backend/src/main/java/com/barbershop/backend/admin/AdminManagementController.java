@@ -138,6 +138,12 @@ public class AdminManagementController {
 		service.sendDebtReminderForBooking(bookingId);
 	}
 
+	@PostMapping("/bookings/{bookingId}/reminder")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void sendBookingReminder(@PathVariable UUID bookingId) {
+		service.sendBookingReminder(bookingId);
+	}
+
 	@PostMapping("/debts/customers/{customerId}/reminder")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void sendCustomerDebtReminder(
