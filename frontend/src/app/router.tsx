@@ -48,7 +48,7 @@ export const router = createBrowserRouter([
           { path: 'customers', element: <AdminCustomersPage /> },
           { path: 'services', element: <AdminServicesPage /> },
           { path: 'accounts', element: <AdminFinancePage section="accounts" /> },
-          { path: 'payments', element: <AdminFinancePage section="payments" /> },
+          { path: 'payments', element: <Navigate to="/owner/accounts" replace /> },
           { path: 'debts', element: <Navigate to="/owner/accounts" replace /> },
           { path: 'expenses', element: <AdminFinancePage section="expenses" /> },
           { path: 'reports', element: <AdminFinancePage section="reports" /> },

@@ -30,6 +30,9 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 			left join booking.customer customer
 			left join booking.customerAccount account
 			where (:filterStatus = false or booking.status = :status)
+			  and (:activeOnly = false
+			       or booking.status in (com.barbershop.backend.booking.BookingStatus.PENDING,
+			                             com.barbershop.backend.booking.BookingStatus.CONFIRMED))
 			  and (:filterMode = false or booking.bookingMode = :mode)
 			  and (:queueOnly = false or booking.bookingMode in :queueModes)
 			  and (:filterQuery = false
@@ -76,6 +79,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 	Page<Booking> findManagementBookings(
 			@Param("filterStatus") boolean filterStatus,
 			@Param("status") BookingStatus status,
+			@Param("activeOnly") boolean activeOnly,
 			@Param("filterMode") boolean filterMode,
 			@Param("mode") BookingMode mode,
 			@Param("queueOnly") boolean queueOnly,

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { BarChart3, BellRing, CircleDollarSign, CreditCard, Eye, Plus, Wallet, X } from 'lucide-react'
-import { apiRequest, getErrorMessage, type BookingPage } from '../../../lib/api'
+import { BarChart3, BellRing, CircleDollarSign, CreditCard, Eye, History, Plus, Wallet, X } from 'lucide-react'
+import { apiRequest, getErrorMessage } from '../../../lib/api'
 import { getShopDate } from '../../../lib/shop-time'
 import type {
   AdminBestSellingProduct,
@@ -9,17 +9,14 @@ import type {
   AdminBookingSalesReport,
   AdminCustomer,
   AdminCustomerDetails,
-  AdminDebt,
   AdminExpense,
   AdminPayment,
   AdminReport,
 } from '../admin-api'
 
-type Section = 'accounts' | 'payments' | 'debts' | 'expenses' | 'reports'
+type Section = 'accounts' | 'expenses' | 'reports'
 type FinanceLoadResult =
-  | { section: 'accounts'; customers: AdminCustomer[] }
-  | { section: 'payments'; payments: AdminPayment[]; bookings: BookingPage['content']; debts: AdminDebt[] }
-  | { section: 'debts'; debts: AdminDebt[] }
+  | { section: 'accounts'; customers: AdminCustomer[]; payments: AdminPayment[] }
   | { section: 'expenses'; expenses: AdminExpense[] }
   | {
       section: 'reports'
@@ -37,9 +34,7 @@ const methods = [
 ]
 
 const labels: Record<Section, { eyebrow: string; title: string }> = {
-  accounts: { eyebrow: 'أرصدة العملاء والحجوزات غير المسددة', title: 'الحسابات والديون' },
-  payments: { eyebrow: 'تسجيل الإيرادات المحصلة', title: 'المدفوعات' },
-  debts: { eyebrow: 'مبالغ مستحقة على الحجوزات المكتملة', title: 'الديون' },
+  accounts: { eyebrow: 'أرصدة العملاء والدفعات المحصلة', title: 'الحسابات والديون' },
   expenses: { eyebrow: 'النفقات التشغيلية المسجلة', title: 'المصروفات' },
   reports: { eyebrow: 'ملخص نقدي حسب فترة التحصيل', title: 'الأرباح والتقارير' },
 }
@@ -48,14 +43,13 @@ function AdminFinancePage({ section }: { section: Section }) {
   const [customers, setCustomers] = useState<AdminCustomer[]>([])
   const [selectedCustomerDetails, setSelectedCustomerDetails] = useState<AdminCustomerDetails | null>(null)
   const [addDebtOpen, setAddDebtOpen] = useState(false)
-  const [debts, setDebts] = useState<AdminDebt[]>([])
   const [payments, setPayments] = useState<AdminPayment[]>([])
+  const [paymentsOpen, setPaymentsOpen] = useState(false)
   const [expenses, setExpenses] = useState<AdminExpense[]>([])
   const [report, setReport] = useState<AdminReport | null>(null)
   const [bestSellingProducts, setBestSellingProducts] = useState<AdminBestSellingProduct[]>([])
   const [bestSellingServices, setBestSellingServices] = useState<AdminBestSellingService[]>([])
   const [bookingSales, setBookingSales] = useState<AdminBookingSalesReport[]>([])
-  const [bookings, setBookings] = useState<BookingPage['content']>([])
   const [query, setQuery] = useState('')
   const [fromDate, setFromDate] = useState(getShopDate().slice(0, 7) + '-01')
   const [toDate, setToDate] = useState(getShopDate())
@@ -74,24 +68,11 @@ function AdminFinancePage({ section }: { section: Section }) {
       if (section === 'accounts') {
         const searchParams = new URLSearchParams({ page: '0', size: '100' })
         if (query.trim()) searchParams.set('q', query.trim())
-        const customerPage = await apiRequest<{ content: AdminCustomer[] }>(`/api/admin/customers?${searchParams}`)
-        return { section, customers: customerPage.content }
-      } else if (section === 'payments') {
-        const [paid, completed, unpaid] = await Promise.all([
+        const [customerPage, paid] = await Promise.all([
+          apiRequest<{ content: AdminCustomer[] }>(`/api/admin/customers?${searchParams}`),
           apiRequest<AdminPayment[]>(`/api/admin/payments?${params}`),
-          apiRequest<BookingPage>(`/api/bookings?status=COMPLETED&page=0&size=100`),
-          apiRequest<AdminDebt[]>('/api/admin/debts'),
         ])
-        return {
-          section,
-          payments: paid,
-          debts: unpaid,
-          bookings: completed.content.filter((booking) => unpaid.some((debt) => debt.bookingId === booking.id)),
-        }
-      } else if (section === 'debts') {
-        const debtParams = new URLSearchParams()
-        if (query.trim()) debtParams.set('q', query.trim())
-        return { section, debts: await apiRequest<AdminDebt[]>(`/api/admin/debts?${debtParams}`) }
+        return { section, customers: customerPage.content, payments: paid }
       } else if (section === 'expenses') {
         return { section, expenses: await apiRequest<AdminExpense[]>(`/api/admin/expenses?${params}`) }
       }
@@ -119,12 +100,7 @@ function AdminFinancePage({ section }: { section: Section }) {
       if (!active) return
       if (data.section === 'accounts') {
         setCustomers(data.customers)
-      } else if (data.section === 'payments') {
         setPayments(data.payments)
-        setBookings(data.bookings)
-        setDebts(data.debts)
-      } else if (data.section === 'debts') {
-        setDebts(data.debts)
       } else if (data.section === 'expenses') {
         setExpenses(data.expenses)
       } else {
@@ -138,30 +114,6 @@ function AdminFinancePage({ section }: { section: Section }) {
     })
     return () => { active = false }
   }, [fromDate, query, refreshKey, reportMonth, section, toDate])
-
-  const submitPayment = async (event: FormEvent<HTMLFormElement>, bookingId: string, debt = false) => {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    setBusy(true)
-    setError('')
-    setNotice('')
-    try {
-      await apiRequest(`/api/admin/${debt ? 'debts' : 'bookings'}/${bookingId}/payments`, {
-        method: 'POST',
-        body: JSON.stringify({
-          amount: Number(formData.get('amount')),
-          method: String(formData.get('method')),
-          notes: formData.get('notes') ? String(formData.get('notes')).trim() || null : null,
-        }),
-      })
-      setNotice('تم تسجيل الدفعة في السجل المالي.')
-      setRefreshKey((value) => value + 1)
-    } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تسجيل الدفعة.'))
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const sendCustomerDebtReminder = async (customerId: string, hasAccount: boolean) => {
     setReminderBusyId(customerId)
@@ -293,7 +245,7 @@ function AdminFinancePage({ section }: { section: Section }) {
             <label>الشهر<input type="month" value={reportMonth}
               onChange={(event) => setReportMonth(event.target.value || getShopDate().slice(0, 7))} /></label>
           </div>}
-          {(section === 'payments' || section === 'expenses') && <div className="admin-date-range">
+          {(section === 'accounts' || section === 'expenses') && <div className="admin-date-range">
             <label>من<input type="date" value={fromDate} max={toDate}
               onClick={(event) => event.currentTarget.showPicker?.()}
               onChange={(event) => setFromDate(event.target.value)} /></label>
@@ -304,7 +256,7 @@ function AdminFinancePage({ section }: { section: Section }) {
         </div>
         {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
         {notice && <p className="admin-message" role="status">{notice}</p>}
-        {(section === 'accounts' || section === 'debts') && (
+        {section === 'accounts' && (
           <label className="admin-search admin-finance-search">
             <span className="visually-hidden">بحث في الحسابات والديون</span>
             <input value={query} maxLength={150} placeholder="ابحث باسم العميل أو رقم الهاتف"
@@ -359,46 +311,24 @@ function AdminFinancePage({ section }: { section: Section }) {
               {!indebtedCustomers.length
                 && <p className="admin-empty-inline">لا توجد أرصدة مستحقة حالياً.</p>}
             </div>
-          </>
-        )}
-
-        {section === 'payments' && (
-          <>
-            <div className="admin-payment-entry">
-              <h3><CreditCard size={18} /> تسجيل دفعة لحجز مكتمل</h3>
-              {!bookings.length ? <p className="admin-state">لا توجد حجوزات مكتملة بانتظار الدفع.</p> : (
-                <form className="admin-payment-form" onSubmit={(event) => {
-                  const form = event.currentTarget
-                  void submitPayment(event, String(new FormData(form).get('bookingId')))
-                }}>
-                  <label>الحجز<select name="bookingId" required defaultValue="">
-                    <option value="" disabled>اختر الحجز</option>
-                    {bookings.map((booking) => {
-                      const debt = debts.find((item) => item.bookingId === booking.id)
-                      return (
-                        <option value={booking.id} key={booking.id}>
-                          {booking.customerName || 'عميل'} — {booking.serviceName} — المتبقي {debt?.balance.toLocaleString('ar')} ₪
-                        </option>
-                      )
-                    })}
-                  </select></label>
-                  <label>المبلغ<input name="amount" type="number" min="0.01" step="0.01" required /></label>
-                  <label>طريقة الدفع<select name="method">{methods.map((method) =>
-                    <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
-                  <label>ملاحظة<input name="notes" maxLength={1000} /></label>
-                  <button className="admin-primary-button" disabled={busy}>{busy ? 'جارٍ الحفظ...' : 'تسجيل الدفعة'}</button>
-                </form>
-              )}
+            <div className="admin-finance-ledger-toggle-row">
+              <button className="admin-secondary-button admin-finance-ledger-toggle" type="button"
+                aria-expanded={paymentsOpen} onClick={() => setPaymentsOpen((open) => !open)}>
+                <History size={15} /> {paymentsOpen ? 'إخفاء سجل الدفعات' : 'عرض سجل الدفعات'}
+                <span>{payments.length.toLocaleString('ar')}</span>
+              </button>
             </div>
-            <h3 className="admin-subheading">سجل الدفعات</h3>
-            <div className="admin-finance-list">
-              {payments.map((payment) => <div className="admin-finance-row" key={payment.id}>
-                <div><strong>{payment.customerName}</strong><small>{payment.notes || payment.method}</small></div>
-                <span>{new Date(payment.paidAt).toLocaleString('ar')}</span>
-                <strong>{payment.amount.toLocaleString('ar')} ₪</strong>
-              </div>)}
-              {!payments.length && <p className="admin-empty-inline">لا توجد دفعات في الفترة المحددة.</p>}
-            </div>
+            {paymentsOpen && <>
+              <h3 className="admin-subheading">سجل الدفعات</h3>
+              <div className="admin-finance-list">
+                {payments.map((payment) => <div className="admin-finance-row" key={payment.id}>
+                  <div><strong>{payment.customerName}</strong><small>{payment.notes || payment.method}</small></div>
+                  <span>{new Date(payment.paidAt).toLocaleString('ar')}</span>
+                  <strong>{payment.amount.toLocaleString('ar')} ₪</strong>
+                </div>)}
+                {!payments.length && <p className="admin-empty-inline">لا توجد دفعات في الفترة المحددة.</p>}
+              </div>
+            </>}
           </>
         )}
 

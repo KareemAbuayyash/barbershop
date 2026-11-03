@@ -54,6 +54,7 @@ public class BookingManagementService {
 			LocalDate fromDate,
 			LocalDate toDate,
 			BookingStatus status,
+			boolean activeOnly,
 			BookingMode mode,
 			boolean queueOnly,
 			String query,
@@ -77,6 +78,7 @@ public class BookingManagementService {
 		Page<Booking> result = bookingRepository.findManagementBookings(
 				status != null,
 				status,
+				activeOnly,
 				mode != null,
 				mode,
 				queueOnly,

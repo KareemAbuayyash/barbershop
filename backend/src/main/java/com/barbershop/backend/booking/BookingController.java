@@ -86,6 +86,7 @@ public class BookingController {
 			@RequestParam(required = false) LocalDate fromDate,
 			@RequestParam(required = false) LocalDate toDate,
 			@RequestParam(required = false) BookingStatus status,
+			@RequestParam(defaultValue = "false") boolean activeOnly,
 			@RequestParam(required = false) BookingMode mode,
 			@RequestParam(defaultValue = "false") boolean queueOnly,
 			@RequestParam(required = false) String q,
@@ -99,7 +100,8 @@ public class BookingController {
 					org.springframework.http.HttpStatus.BAD_REQUEST,
 					"Provide either a single date or a valid date range.");
 		}
-		return bookingManagementService.listBookings(date, effectiveFrom, effectiveTo, status, mode, queueOnly, q, page, size);
+		return bookingManagementService.listBookings(date, effectiveFrom, effectiveTo, status, activeOnly,
+				mode, queueOnly, q, page, size);
 	}
 
 	@GetMapping("/{id}")

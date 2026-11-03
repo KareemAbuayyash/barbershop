@@ -7,6 +7,7 @@ import { formatShopDateTime, getShopDate, isoToShopLocalDateTime } from '../../.
 import type { AdminEmployee, AdminPage, AdminBooking, AdminProduct } from '../admin-api'
 
 type Preset = 'today' | 'tomorrow' | 'week' | 'month' | 'all' | 'custom'
+type BookingStatusFilter = BookingStatus | '' | 'ACTIVE'
 
 const presets: Array<{ value: Preset; label: string }> = [
   { value: 'today', label: 'اليوم' },
@@ -17,7 +18,8 @@ const presets: Array<{ value: Preset; label: string }> = [
   { value: 'custom', label: 'فترة مخصصة' },
 ]
 
-const statuses: Array<{ value: BookingStatus | ''; label: string }> = [
+const statuses: Array<{ value: BookingStatusFilter; label: string }> = [
+  { value: 'ACTIVE', label: 'بانتظار التأكيد والمؤكد' },
   { value: '', label: 'كل الحالات' },
   { value: 'PENDING', label: 'بانتظار التأكيد' },
   { value: 'CONFIRMED', label: 'مؤكد' },
@@ -93,9 +95,9 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   const [preset, setPreset] = useState<Preset>('all')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const [status, setStatus] = useState<BookingStatus | ''>(() => {
+  const [status, setStatus] = useState<BookingStatusFilter>(() => {
     const initial = searchParams.get('status')
-    return statuses.find((item) => item.value === initial)?.value ?? ''
+    return statuses.find((item) => item.value === initial)?.value ?? 'ACTIVE'
   })
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
@@ -156,7 +158,8 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     const end = preset === 'custom' ? toDate : appliedRange?.[1]
     if (start) params.set('fromDate', start)
     if (end) params.set('toDate', end)
-    if (status) params.set('status', status)
+    if (status === 'ACTIVE') params.set('activeOnly', 'true')
+    else if (status) params.set('status', status)
     if (query.trim()) params.set('q', query.trim())
     if (queueOnly) params.set('queueOnly', 'true')
 
@@ -456,7 +459,7 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
             <select id="booking-status" value={status} onChange={(event) => {
               setLoading(true)
               setError('')
-              setStatus(event.target.value as BookingStatus | '')
+              setStatus(event.target.value as BookingStatusFilter)
               setPage(0)
             }}>
               {statuses.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}

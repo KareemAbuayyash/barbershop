@@ -23,7 +23,7 @@ const cards: Array<{
   { key: 'bookingsToday', label: 'حجوزات اليوم', icon: CalendarDays, to: '/owner/bookings' },
   { key: 'pendingBookings', label: 'بانتظار التأكيد', icon: ArrowDownLeft, to: '/owner/bookings?status=PENDING' },
   { key: 'activeCustomers', label: 'العملاء', icon: Users, to: '/owner/customers' },
-  { key: 'collectedToday', label: 'المتحصل اليوم (₪)', icon: ArrowUpLeft, to: '/owner/payments', money: true },
+  { key: 'collectedToday', label: 'المتحصل اليوم (₪)', icon: ArrowUpLeft, to: '/owner/accounts', money: true },
   { key: 'outstandingDebt', label: 'الديون المستحقة (₪)', icon: CircleDollarSign, to: '/owner/accounts', money: true },
   { key: 'lowStockProducts', label: 'تنبيهات المخزون', icon: Package, to: '/owner/inventory' },
 ]
@@ -106,7 +106,7 @@ function OwnerPage() {
         <div className="admin-panel-heading"><div><span className="admin-eyebrow">الوصول السريع</span><h2>إدارة المحل</h2></div></div>
         <div className="admin-shortcut-grid">
           <Link to="/owner/bookings">مراجعة الحجوزات <span>←</span></Link>
-          <Link to="/owner/payments">تسجيل دفعة <span>←</span></Link>
+          <Link to="/owner/accounts">الحسابات والدفعات <span>←</span></Link>
           <Link to="/owner/expenses">إضافة مصروف <span>←</span></Link>
           <Link to="/owner/inventory">تحديث المخزون <span>←</span></Link>
         </div>

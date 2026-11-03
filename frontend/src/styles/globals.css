@@ -3143,6 +3143,28 @@ button {
   min-width: 0;
 }
 
+.admin-finance-ledger-toggle-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.admin-finance-ledger-toggle {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.admin-finance-ledger-toggle span {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding-inline: 4px;
+  border-radius: 10px;
+  background: rgba(224, 209, 175, 0.1);
+}
+
 .admin-add-debt-trigger {
   min-height: 34px;
   margin-block: 10px 16px;

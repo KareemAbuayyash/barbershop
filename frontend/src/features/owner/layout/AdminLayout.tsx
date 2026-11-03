@@ -6,7 +6,6 @@ import {
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
-  CreditCard,
   Gauge,
   Menu,
   Package,
@@ -34,7 +33,6 @@ const navigationSections = [
     title: 'الإدارة المالية',
     links: [
       { label: 'الحسابات والديون', to: '/owner/accounts', icon: CircleDollarSign },
-      { label: 'المدفوعات', to: '/owner/payments', icon: CreditCard },
       { label: 'المصروفات', to: '/owner/expenses', icon: ShoppingBasket },
       { label: 'الأرباح والتقارير', to: '/owner/reports', icon: ChartNoAxesCombined },
     ],
@@ -57,7 +55,6 @@ const pageTitles: Record<string, string> = {
   '/owner/services': 'الخدمات',
   '/owner/queue': 'قائمة الانتظار',
   '/owner/accounts': 'الحسابات والديون',
-  '/owner/payments': 'المدفوعات',
   '/owner/expenses': 'المصروفات',
   '/owner/reports': 'الأرباح والتقارير',
   '/owner/inventory': 'المخزون',
