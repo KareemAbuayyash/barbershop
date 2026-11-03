@@ -299,6 +299,17 @@ public class NotificationService {
 				"تذكير: موعدك اقترب", body, "/my-bookings");
 	}
 
+	@Transactional
+	public void notifyUpcomingAppointmentReminder(UUID bookingId) {
+		BookingNotificationDetails booking = findBookingNotification(bookingId);
+		if (booking == null || booking.startsAt() == null) return;
+		String eventKey = "booking:" + booking.id() + ":reminder-30m:" + booking.startsAt().toEpochMilli();
+		String body = booking.serviceName() + " · " + formatBookingTime(booking)
+				+ " · موعدك بعد نصف ساعة.";
+		notifyBookingCustomerOrGuest(booking, "BOOKING_REMINDER", eventKey,
+				"تذكير: موعدك بعد نصف ساعة", body, "/my-bookings");
+	}
+
 	public void notifyBookingRejected(UUID bookingId) {
 		notifyBookingLifecycle(bookingId, "BOOKING_REJECTED", "تم رفض الحجز",
 				"تم رفض طلب الحجز.", ":rejected");
@@ -1083,34 +1094,17 @@ public class NotificationService {
 		}
 	}
 
-	@Scheduled(cron = "0 0 * * * *", zone = "Asia/Hebron")
+	@Scheduled(fixedDelay = 30_000)
 	@Transactional
 	public void notifyUpcomingBookings() {
-		List<Reminder> reminders = jdbc.query("""
-				SELECT booking.id, booking.customer_name, booking.service_name_snapshot,
-				       booking.starts_at
-				FROM bookings booking
-				JOIN customers customer ON customer.id = booking.customer_id
-				WHERE booking.status = 'CONFIRMED'
-				  AND booking.starts_at >= CURRENT_TIMESTAMP
-				  AND booking.starts_at < CURRENT_TIMESTAMP + INTERVAL '24 hours'
-				ORDER BY booking.starts_at
-				""", (rs, row) -> new Reminder(
-				rs.getObject("id", UUID.class),
-				rs.getString("customer_name"),
-				rs.getString("service_name_snapshot"),
-				rs.getTimestamp("starts_at").toInstant()));
-		for (Reminder reminder : reminders) {
-			String eventKey = "booking:" + reminder.id() + ":reminder-24h";
-			String appointmentTime = java.time.format.DateTimeFormatter
-					.ofPattern("dd/MM/yyyy HH:mm", Locale.forLanguageTag("ar"))
-					.format(reminder.startsAt().atZone(java.time.ZoneId.of("Asia/Hebron")));
-			String body = reminder.serviceName() + " · " + appointmentTime;
-			notifyOwner("BOOKING_REMINDER", eventKey, "تذكير بموعد قادم",
-					reminder.customerName() + " · " + body, "/owner/bookings");
-			notifyBookingCustomer(reminder.id(), "BOOKING_REMINDER", eventKey,
-					"تذكير بموعدك", body, "/my-bookings");
-		}
+		List<UUID> bookingIds = jdbc.query("""
+				SELECT id FROM bookings
+				WHERE status = 'CONFIRMED'
+				  AND starts_at > CURRENT_TIMESTAMP + INTERVAL '29 minutes'
+				  AND starts_at <= CURRENT_TIMESTAMP + INTERVAL '30 minutes'
+				ORDER BY starts_at
+				""", (rs, row) -> rs.getObject("id", UUID.class));
+		bookingIds.forEach(this::notifyUpcomingAppointmentReminder);
 	}
 
 	@Scheduled(cron = "0 5 0 * * *", zone = "Asia/Hebron")

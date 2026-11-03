@@ -1223,7 +1223,14 @@ public class AdminManagementService {
 				.toList();
 		for (AffectedBooking booking : affected) {
 			jdbc.update("""
-					UPDATE bookings SET status = 'PENDING', updated_at = CURRENT_TIMESTAMP
+					UPDATE bookings
+					SET status = 'PENDING',
+					    booking_mode = 'CONFIRMATION_REQUEST',
+					    starts_at = NULL,
+					    preferred_date = NULL,
+					    queue_date = NULL,
+					    queue_position = NULL,
+					    updated_at = CURRENT_TIMESTAMP
 					WHERE id = ? AND status IN ('PENDING', 'CONFIRMED')
 					""", booking.id());
 			notificationService.notifyBookingAffectedByShopClosure(booking.id(), booking.date());

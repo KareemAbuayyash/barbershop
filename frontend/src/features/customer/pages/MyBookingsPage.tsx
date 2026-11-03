@@ -145,6 +145,8 @@ function MyBookingsPage() {
                     <dd>{booking.queueDate
                       ? new Intl.DateTimeFormat('ar', { timeZone: 'Asia/Hebron', dateStyle: 'medium' })
                         .format(new Date(`${booking.queueDate}T12:00:00+02:00`))
+                      : booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING' && !booking.startsAt
+                        ? 'بانتظار تحديد موعد جديد من المحل'
                       : formatShopDateTime(booking.startsAt)}
                     </dd>
                   </div>
