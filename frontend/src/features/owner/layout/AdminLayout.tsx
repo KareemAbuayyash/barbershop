@@ -45,20 +45,6 @@ const navigationSections = [
   },
 ]
 
-const pageTitles: Record<string, string> = {
-  '/owner': 'لوحة المعلومات',
-  '/owner/bookings': 'إدارة الحجوزات',
-  '/owner/customers': 'العملاء',
-  '/owner/services': 'الخدمات',
-  '/owner/accounts': 'الحسابات والديون',
-  '/owner/expenses': 'المصروفات',
-  '/owner/reports': 'الأرباح والتقارير',
-  '/owner/inventory': 'المخزون',
-  '/owner/notifications': 'الإشعارات',
-  '/owner/settings': 'إعدادات المحل',
-  '/owner/settings/notifications': 'إعدادات الإشعارات',
-}
-
 function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user } = useAuth()
@@ -72,10 +58,6 @@ function AdminLayout() {
     window.addEventListener('barbershop:close-admin-menu', closeSidebar)
     return () => window.removeEventListener('barbershop:close-admin-menu', closeSidebar)
   }, [])
-  const title = location.pathname === '/owner/bookings' && location.search.includes('view=queue')
-    ? 'قائمة يومية'
-    : pageTitles[location.pathname] ?? 'إدارة المحل'
-
   return (
     <div className="admin-shell" dir="rtl">
       {sidebarOpen && (
@@ -129,7 +111,7 @@ function AdminLayout() {
       </aside>
 
       <div className="admin-main">
-        <header className="admin-header">
+        <header className="admin-header admin-header--minimal">
           <button
             type="button"
             className="admin-menu-toggle"
@@ -140,10 +122,6 @@ function AdminLayout() {
               setSidebarOpen(true)
             }}
           ><Menu size={21} /></button>
-          <div className="admin-header-title">
-            <span>إدارة المحل</span>
-            <h1>{title}</h1>
-          </div>
         </header>
         <main className="admin-content"><Outlet /></main>
       </div>

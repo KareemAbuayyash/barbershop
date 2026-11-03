@@ -1,8 +1,19 @@
-import { useEffect, useState } from 'react'
-import { ArrowDownLeft, ArrowUpLeft, CalendarDays, CircleDollarSign, Package, Users } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ArrowDownLeft,
+  ArrowLeft,
+  ArrowUpLeft,
+  CalendarDays,
+  CircleDollarSign,
+  Clock3,
+  Package,
+  ReceiptText,
+  Users,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { apiRequest, getErrorMessage } from '../../../lib/api'
-import type { AdminDashboardTrendPoint } from '../admin-api'
+import { apiRequest, getErrorMessage, type Booking, type BookingStatus } from '../../../lib/api'
+import { getShopDate } from '../../../lib/shop-time'
+import type { AdminBooking, AdminDashboardTrendPoint, AdminPage } from '../admin-api'
 
 interface DashboardSummary {
   pendingBookings: number
@@ -13,25 +24,43 @@ interface DashboardSummary {
   lowStockProducts: number
 }
 
-const cards: Array<{
-  key: keyof DashboardSummary
-  label: string
-  icon: typeof CalendarDays
-  to: string
-  money?: boolean
-}> = [
-  { key: 'bookingsToday', label: 'حجوزات اليوم', icon: CalendarDays, to: '/owner/bookings' },
-  { key: 'pendingBookings', label: 'بانتظار التأكيد', icon: ArrowDownLeft, to: '/owner/bookings?status=PENDING' },
-  { key: 'activeCustomers', label: 'العملاء', icon: Users, to: '/owner/customers' },
-  { key: 'collectedToday', label: 'المتحصل اليوم (₪)', icon: ArrowUpLeft, to: '/owner/accounts', money: true },
-  { key: 'outstandingDebt', label: 'الديون المستحقة (₪)', icon: CircleDollarSign, to: '/owner/accounts', money: true },
-  { key: 'lowStockProducts', label: 'تنبيهات المخزون', icon: Package, to: '/owner/inventory' },
+const statusLabels: Record<BookingStatus, string> = {
+  PENDING: 'بانتظار التأكيد',
+  CONFIRMED: 'مؤكد',
+  COMPLETED: 'مكتمل',
+  CANCELLED: 'ملغي',
+}
+
+const actions = [
+  { label: 'الحجوزات', description: 'مراجعة الطلبات والأدوار', to: '/owner/bookings', icon: CalendarDays },
+  { label: 'الحسابات', description: 'الدفعات والأرصدة المستحقة', to: '/owner/accounts', icon: CircleDollarSign },
+  { label: 'مصروف جديد', description: 'إضافة مصروف للمحل', to: '/owner/expenses', icon: ReceiptText },
+  { label: 'المخزون', description: 'المنتجات وحركاتها', to: '/owner/inventory', icon: Package },
 ]
+
+function formatAmount(value: number) {
+  return value.toLocaleString('ar', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function formatBookingTime(booking: Booking) {
+  if (booking.startsAt) {
+    return new Intl.DateTimeFormat('ar', {
+      timeZone: 'Asia/Hebron', hour: 'numeric', minute: '2-digit',
+    }).format(new Date(booking.startsAt))
+  }
+  if (booking.queuePosition !== null) return `الدور ${booking.queuePosition.toLocaleString('ar')}`
+  return 'بانتظار تحديد الموعد'
+}
 
 function OwnerPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [trend, setTrend] = useState<AdminDashboardTrendPoint[] | null>(null)
+  const [todayBookings, setTodayBookings] = useState<AdminBooking[] | null>(null)
   const [error, setError] = useState('')
+  const shopDate = getShopDate()
+  const dateLabel = new Intl.DateTimeFormat('ar', {
+    timeZone: 'Asia/Hebron', weekday: 'long', day: 'numeric', month: 'long',
+  }).format(new Date(`${shopDate}T12:00:00`))
 
   useEffect(() => {
     let active = true
@@ -41,76 +70,158 @@ function OwnerPage() {
     void apiRequest<AdminDashboardTrendPoint[]>('/api/admin/summary/trend')
       .then((data) => { if (active) setTrend(data) })
       .catch((cause: unknown) => { if (active) setError(getErrorMessage(cause, 'تعذر تحميل حركة المحل.')) })
+    const params = new URLSearchParams({
+      page: '0', size: '5', fromDate: shopDate, toDate: shopDate, activeOnly: 'true',
+    })
+    void apiRequest<AdminPage<AdminBooking>>(`/api/bookings?${params}`)
+      .then((data) => { if (active) setTodayBookings(data.content) })
+      .catch((cause: unknown) => { if (active) setError(getErrorMessage(cause, 'تعذر تحميل حجوزات اليوم.')) })
     return () => { active = false }
-  }, [])
+  }, [shopDate])
+
+  const chart = useMemo(() => {
+    if (!trend?.length) return null
+    const maximum = Math.max(...trend.map(({ collected }) => collected), 1)
+    const points = trend.map((point, index) => ({
+      ...point,
+      x: trend.length === 1 ? 350 : 38 + index * (624 / (trend.length - 1)),
+      y: 178 - (point.collected / maximum) * 132,
+      label: new Intl.DateTimeFormat('ar', { day: 'numeric', month: 'short' })
+        .format(new Date(`${point.date}T12:00:00`)),
+    }))
+    const line = points.map(({ x, y }) => `${x},${y}`).join(' ')
+    const area = `38,178 ${line} 662,178`
+    return { points, line, area }
+  }, [trend])
+
+  const weekCollected = trend?.reduce((total, point) => total + point.collected, 0) ?? 0
 
   return (
-    <div className="admin-page">
-      <div className="admin-welcome">
-        <div><span className="admin-eyebrow">نظرة عامة</span><h2>أهلاً بك في لوحة الإدارة</h2>
-          <p>ملخص مباشر لحركة المحل والعمليات التي تحتاج متابعتك.</p></div>
-        <Link className="admin-primary-button" to="/owner/bookings">عرض الحجوزات</Link>
+    <div className="admin-page admin-dashboard-page">
+      <div className="admin-dashboard-heading">
+        <div><span className="admin-eyebrow">نظرة عامة</span><h2>حركة المحل اليوم</h2></div>
+        <span className="admin-dashboard-date"><CalendarDays size={15} /> {dateLabel}</span>
       </div>
       {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
-      {!summary ? (
-        <p className="admin-state" role="status">جارٍ تحميل الملخص...</p>
-      ) : (
-        <div className="admin-stat-grid">
-          {cards.map(({ key, label, icon: Icon, to, ...options }) => (
-            <Link className="admin-stat-card" to={to} key={key}>
-              <span className="admin-stat-icon"><Icon size={20} /></span>
-              <span className="admin-stat-label">{label}</span>
-              <strong>{options.money ? summary[key].toLocaleString('ar', { minimumFractionDigits: 2 }) : summary[key].toLocaleString('ar')}</strong>
+
+      {summary ? (
+        <div className="admin-dashboard-stat-grid">
+          <Link className="admin-dashboard-stat-card admin-dashboard-stat-card--pink" to="/owner/bookings">
+            <span>حجوزات اليوم</span><CalendarDays size={19} /><strong>{summary.bookingsToday.toLocaleString('ar')}</strong>
+            <small>عرض قائمة الحجوزات <ArrowLeft size={13} /></small>
+          </Link>
+          <Link className="admin-dashboard-stat-card admin-dashboard-stat-card--purple" to="/owner/bookings?status=PENDING">
+            <span>بانتظار التأكيد</span><ArrowDownLeft size={19} /><strong>{summary.pendingBookings.toLocaleString('ar')}</strong>
+            <small>طلبات تحتاج متابعة <ArrowLeft size={13} /></small>
+          </Link>
+          <Link className="admin-dashboard-stat-card admin-dashboard-stat-card--blue" to="/owner/accounts">
+            <span>المتحصل اليوم · ₪</span><ArrowUpLeft size={19} /><strong>{formatAmount(summary.collectedToday)}</strong>
+            <small>الدفعات المسجلة اليوم <ArrowLeft size={13} /></small>
+          </Link>
+          <Link className="admin-dashboard-stat-card admin-dashboard-stat-card--orange" to="/owner/customers">
+            <span>العملاء</span><Users size={19} /><strong>{summary.activeCustomers.toLocaleString('ar')}</strong>
+            <small>إجمالي العملاء <ArrowLeft size={13} /></small>
+          </Link>
+        </div>
+      ) : <div className="admin-dashboard-loading" role="status">جارٍ تحميل مؤشرات المحل...</div>}
+
+      <div className="admin-dashboard-analytics-grid">
+        <section className="admin-panel admin-dashboard-earnings">
+          <div className="admin-dashboard-panel-heading">
+            <div><span className="admin-eyebrow">آخر سبعة أيام</span><h2>التحصيل الفعلي</h2></div>
+            <Link className="admin-secondary-button" to="/owner/reports">التقارير المالية</Link>
+          </div>
+          {trend === null ? <p className="admin-state" role="status">جارٍ تحميل حركة التحصيل...</p> : (
+            <>
+              <div className="admin-dashboard-earnings-total">
+                <strong>{formatAmount(weekCollected)} <small>₪</small></strong>
+                <span>إجمالي الدفعات المحصلة خلال أسبوع</span>
+              </div>
+              <div className="admin-dashboard-line-chart">
+                {chart && <svg viewBox="0 0 700 230" role="img" aria-label="الدفعات المحصلة خلال آخر سبعة أيام">
+                  <defs>
+                    <linearGradient id="dashboard-area" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#c3a66b" stopOpacity=".3" />
+                      <stop offset="100%" stopColor="#c3a66b" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  {[46, 90, 134, 178].map((y) => <line key={y} x1="38" y1={y} x2="662" y2={y}
+                    className={y === 178 ? 'admin-dashboard-chart-axis' : 'admin-dashboard-chart-grid'} />)}
+                  <polygon points={chart.area} fill="url(#dashboard-area)" />
+                  <polyline points={chart.line} className="admin-dashboard-chart-line" />
+                  {chart.points.map((point) => <g key={point.date}>
+                    <circle cx={point.x} cy={point.y} r="3.5" className="admin-dashboard-chart-dot">
+                      <title>{`${point.label}: ${formatAmount(point.collected)} ₪ · ${point.bookings.toLocaleString('ar')} حجوزات`}</title>
+                    </circle>
+                    <text x={point.x} y="201" textAnchor="middle" className="admin-dashboard-chart-label">{point.label}</text>
+                  </g>)}
+                </svg>}
+              </div>
+              <p className="admin-form-note">الإيراد يعرض الدفعات المستلمة فعليًا، ولا يشمل الحجوزات أو الديون غير المحصلة.</p>
+            </>
+          )}
+        </section>
+
+        <section className="admin-panel admin-dashboard-followup">
+          <div className="admin-dashboard-panel-heading">
+            <div><span className="admin-eyebrow">نظرة سريعة</span><h2>تحتاج متابعة</h2></div>
+          </div>
+          {summary ? <div className="admin-dashboard-followup-list">
+            <Link to="/owner/bookings?status=PENDING" className="admin-dashboard-followup-row">
+              <span className="admin-dashboard-followup-icon followup-pending"><CalendarDays size={17} /></span>
+              <span><strong>حجوزات بانتظار التأكيد</strong><small>طلبات جديدة من العملاء</small></span>
+              <b>{summary.pendingBookings.toLocaleString('ar')}</b>
             </Link>
-          ))}
-        </div>
-      )}
-      <section className="admin-panel admin-trend-panel">
-        <div className="admin-panel-heading">
-          <div><span className="admin-eyebrow">آخر سبعة أيام</span><h2>حركة المحل والتحصيل</h2></div>
-          <Link className="admin-secondary-button" to="/owner/reports">التقارير المالية</Link>
-        </div>
-        {trend === null ? (
-          <p className="admin-state" role="status">جارٍ تحميل الرسم البياني...</p>
-        ) : (
-          <>
-            <div className="admin-trend-legend"><span /><small>الدفعات المحصلة فعلياً (₪)</small></div>
-            <div className="admin-trend-chart">
-              <svg viewBox="0 0 700 230" role="img" aria-label="رسم الدفعات المحصلة وعدد الحجوزات خلال آخر سبعة أيام">
-                <line x1="20" y1="174" x2="680" y2="174" className="admin-trend-axis" />
-                {trend.map((point, index) => {
-                  const maxCollected = Math.max(...trend.map(({ collected }) => collected), 1)
-                  const height = Math.max(point.collected > 0 ? 3 : 0, (point.collected / maxCollected) * 128)
-                  const x = 28 + index * 94
-                  const dateLabel = new Intl.DateTimeFormat('ar', { day: 'numeric', month: 'short' })
-                    .format(new Date(`${point.date}T12:00:00`))
-                  return (
-                    <g key={point.date}>
-                      <rect className="admin-trend-bar" x={x} y={174 - height} width="46" height={height} rx="5">
-                        <title>{`${dateLabel}: ${point.collected.toLocaleString('ar')} ₪، ${point.bookings.toLocaleString('ar')} حجز`}</title>
-                      </rect>
-                      <text className="admin-trend-date" x={x + 23} y="197" textAnchor="middle">{dateLabel}</text>
-                      <text className="admin-trend-count" x={x + 23} y="218" textAnchor="middle">
-                        {point.bookings.toLocaleString('ar')} حجوزات
-                      </text>
-                    </g>
-                  )
-                })}
-              </svg>
-            </div>
-            <p className="admin-form-note">يعرض الرسم الدفعات المسجلة فعلياً؛ لا تُحتسب الحجوزات أو الديون غير المحصلة كإيراد.</p>
-          </>
-        )}
-      </section>
-      <section className="admin-panel admin-shortcuts">
-        <div className="admin-panel-heading"><div><span className="admin-eyebrow">الوصول السريع</span><h2>إدارة المحل</h2></div></div>
-        <div className="admin-shortcut-grid">
-          <Link to="/owner/bookings">مراجعة الحجوزات <span>←</span></Link>
-          <Link to="/owner/accounts">الحسابات والدفعات <span>←</span></Link>
-          <Link to="/owner/expenses">إضافة مصروف <span>←</span></Link>
-          <Link to="/owner/inventory">تحديث المخزون <span>←</span></Link>
-        </div>
-      </section>
+            <Link to="/owner/accounts" className="admin-dashboard-followup-row">
+              <span className="admin-dashboard-followup-icon followup-debt"><CircleDollarSign size={17} /></span>
+              <span><strong>الديون المستحقة</strong><small>إجمالي الرصيد غير المسدد</small></span>
+              <b>{formatAmount(summary.outstandingDebt)} ₪</b>
+            </Link>
+            <Link to="/owner/inventory" className="admin-dashboard-followup-row">
+              <span className="admin-dashboard-followup-icon followup-stock"><Package size={17} /></span>
+              <span><strong>تنبيهات المخزون</strong><small>منتجات عند حد التنبيه</small></span>
+              <b>{summary.lowStockProducts.toLocaleString('ar')}</b>
+            </Link>
+          </div> : <p className="admin-state" role="status">جارٍ تحميل التنبيهات...</p>}
+        </section>
+      </div>
+
+      <div className="admin-dashboard-lower-grid">
+        <section className="admin-panel admin-dashboard-appointments">
+          <div className="admin-dashboard-panel-heading">
+            <div><span className="admin-eyebrow">اليوم</span><h2>مواعيد وحجوزات اليوم</h2></div>
+            <Link className="admin-text-link" to="/owner/bookings">عرض الكل <ArrowLeft size={14} /></Link>
+          </div>
+          {todayBookings === null ? <p className="admin-state" role="status">جارٍ تحميل حجوزات اليوم...</p>
+            : todayBookings.length ? <div className="admin-dashboard-booking-list">
+              {todayBookings.map((booking) => (
+                <Link className="admin-dashboard-booking-row" to="/owner/bookings" key={booking.id}>
+                  <span className="admin-dashboard-booking-time"><Clock3 size={14} /> {formatBookingTime(booking)}</span>
+                  <span className="admin-dashboard-booking-client"><strong>{booking.customerName || 'عميل'}</strong>
+                    <small>{booking.serviceName}</small></span>
+                  <span className={`admin-dashboard-booking-status booking-status--${booking.status.toLowerCase()}`}>
+                    {statusLabels[booking.status]}
+                  </span>
+                </Link>
+              ))}
+            </div> : <div className="admin-empty admin-dashboard-empty"><CalendarDays size={23} />
+              <h3>لا توجد حجوزات نشطة اليوم</h3><p>ستظهر الحجوزات اليومية هنا.</p></div>}
+        </section>
+
+        <section className="admin-panel admin-dashboard-actions">
+          <div className="admin-dashboard-panel-heading">
+            <div><span className="admin-eyebrow">الوصول السريع</span><h2>إدارة المحل</h2></div>
+          </div>
+          <div className="admin-dashboard-action-list">
+            {actions.map(({ label, description, to, icon: Icon }) => (
+              <Link to={to} className="admin-dashboard-action-row" key={to}>
+                <span><Icon size={17} /></span><div><strong>{label}</strong><small>{description}</small></div>
+                <ArrowLeft size={15} />
+              </Link>
+            ))}
+          </div>
+        </section>
+      </div>
     </div>
   )
 }
