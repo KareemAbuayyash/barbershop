@@ -3,12 +3,14 @@ import { Bell } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { apiRequest } from '../../lib/api'
 import { readGuestBookingLinks } from './guest-booking-links'
+import { useI18n } from '../../lib/i18n'
 
 interface GuestNotificationCount {
   unreadCount: number
 }
 
 function GuestNotificationLink({ onClick }: { onClick?: () => void }) {
+  const { t, language } = useI18n()
   const [latestToken, setLatestToken] = useState('')
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -58,10 +60,10 @@ function GuestNotificationLink({ onClick }: { onClick?: () => void }) {
         window.dispatchEvent(new Event('barbershop:close-site-menu'))
         window.dispatchEvent(new Event('barbershop:close-admin-menu'))
       }}
-      aria-label={`إشعارات الحجوزات${unreadCount ? `، ${unreadCount} غير مقروء` : ''}`}
-      title="إشعارات الحجوزات">
+      aria-label={`${t('إشعارات الحجوزات')}${unreadCount ? `, ${unreadCount.toLocaleString(language)} ${t('غير مقروء')}` : ''}`}
+      title={t('إشعارات الحجوزات')}>
       <Bell size={19} aria-hidden="true" />
-      {unreadCount > 0 && <span>{unreadCount.toLocaleString('ar')}</span>}
+      {unreadCount > 0 && <span>{unreadCount.toLocaleString(language)}</span>}
     </Link>
   )
 }

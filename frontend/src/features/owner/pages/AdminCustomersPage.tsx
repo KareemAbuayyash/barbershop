@@ -232,7 +232,7 @@ function AdminCustomersPage() {
               {selected.bookings.length ? selected.bookings.map((booking) => (
                 <article className="admin-customer-report-booking" key={booking.id}>
                   <div className="admin-history-row">
-                    <span>{booking.serviceName}</span><span>{booking.status}</span>
+                    <span>{booking.serviceName}</span><span>{t(({ PENDING: 'بانتظار التأكيد', CONFIRMED: 'مؤكد', CANCELLED: 'ملغي', COMPLETED: 'مكتمل' } as Record<string, string>)[booking.status] ?? booking.status)}</span>
                     <strong>{booking.servicePrice.toLocaleString('ar')} ₪</strong>
                     <small>{new Date(booking.createdAt).toLocaleDateString(language)}</small>
                   </div>
@@ -246,7 +246,7 @@ function AdminCustomersPage() {
               <h3 className="admin-subheading">{language === 'ar' ? 'سجل الدفعات' : 'Payment history'}</h3>
               {selected.payments.length ? selected.payments.map((payment) => (
                 <div className="admin-history-row" key={payment.id}>
-                  <span>{payment.method}</span><span>{payment.notes || 'دفعة'}</span>
+                  <span>{t(({ CASH: 'نقداً', CARD: 'بطاقة', TRANSFER: 'تحويل', OTHER: 'أخرى' } as Record<string, string>)[payment.method] ?? payment.method)}</span><span>{payment.notes || t('دفعة')}</span>
                   <strong>{payment.amount.toLocaleString('ar')} ₪</strong>
                   <small>{new Date(payment.paidAt).toLocaleDateString(language)}</small>
                 </div>

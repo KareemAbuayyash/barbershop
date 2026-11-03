@@ -34,6 +34,18 @@ const methods = [
   { value: 'OTHER', label: 'أخرى' },
 ]
 
+const paymentMethodNames: Record<string, string> = {
+  CASH: 'نقداً', CARD: 'بطاقة', TRANSFER: 'تحويل', OTHER: 'أخرى',
+}
+
+function paymentMethodLabel(method: string, t: (value: string) => string) {
+  return t(paymentMethodNames[method] ?? method)
+}
+
+const bookingStatusNames: Record<string, string> = {
+  PENDING: 'بانتظار التأكيد', CONFIRMED: 'مؤكد', CANCELLED: 'ملغي', COMPLETED: 'مكتمل',
+}
+
 const labels: Record<Section, { eyebrow: string; title: string }> = {
   accounts: { eyebrow: 'أرصدة العملاء والدفعات المحصلة', title: 'الحسابات والديون' },
   expenses: { eyebrow: 'النفقات التشغيلية المسجلة', title: 'المصروفات' },
@@ -50,6 +62,7 @@ function ReportDonut({ values, labels, centerValue, centerLabel, label, valueUni
   label: string
   valueUnit: string
 }) {
+  const { t, language } = useI18n()
   const [hoveredSegment, setHoveredSegment] = useState<number | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const total = values.reduce((sum, value) => sum + Math.max(0, value), 0)
@@ -69,24 +82,24 @@ function ReportDonut({ values, labels, centerValue, centerLabel, label, valueUni
             className="admin-report-donut-segment" stroke={reportChartColors[index % reportChartColors.length]}
             strokeDasharray={`${share} ${100 - share}`} strokeDashoffset={-offset}
             tabIndex={0} role="button"
-            aria-label={`${labels[index] ?? label}: ${value.toLocaleString('ar')} ${valueUnit}, ${share.toLocaleString('ar', { maximumFractionDigits: 1 })}٪`}
+            aria-label={`${labels[index] ?? t(label)}: ${value.toLocaleString(language)} ${t(valueUnit)}, ${share.toLocaleString(language, { maximumFractionDigits: 1 })}%`}
             onMouseEnter={() => setHoveredSegment(index)}
             onFocus={() => setHoveredSegment(index)} onBlur={() => setHoveredSegment(null)}
             onClick={() => setHoveredSegment((current) => current === index ? null : index)}>
-            <title>{`${labels[index] ?? label}: ${value.toLocaleString('ar')} ${valueUnit} (${share.toLocaleString('ar', { maximumFractionDigits: 1 })}٪)`}</title>
+            <title>{`${labels[index] ?? t(label)}: ${value.toLocaleString(language)} ${t(valueUnit)} (${share.toLocaleString(language, { maximumFractionDigits: 1 })}%)`}</title>
           </circle>
         })}
         <text x="60" y="56" className="admin-report-donut-value" textAnchor="middle" dominantBaseline="middle">{centerValue}</text>
-        <text x="60" y="73" className="admin-report-donut-label" textAnchor="middle" dominantBaseline="middle">{centerLabel}</text>
+        <text x="60" y="73" className="admin-report-donut-label" textAnchor="middle" dominantBaseline="middle">{t(centerLabel)}</text>
       </svg>
       {hoveredSegment !== null && values[hoveredSegment] !== undefined && <div className="admin-report-chart-tooltip"
         style={{ left: tooltipPosition.x, top: tooltipPosition.y }} role="status">
         <span className="admin-report-mix-swatch" style={{ backgroundColor: reportChartColors[hoveredSegment % reportChartColors.length] }} />
-        <strong>{labels[hoveredSegment] ?? label}</strong>
-        <span>{values[hoveredSegment].toLocaleString('ar')} {valueUnit}</span>
-        <small>{(Math.max(0, values[hoveredSegment]) / total * 100).toLocaleString('ar', { maximumFractionDigits: 1 })}٪</small>
+        <strong>{labels[hoveredSegment] ?? t(label)}</strong>
+        <span>{values[hoveredSegment].toLocaleString(language)} {t(valueUnit)}</span>
+        <small>{(Math.max(0, values[hoveredSegment]) / total * 100).toLocaleString(language, { maximumFractionDigits: 1 })}٪</small>
       </div>}
-      <span>{label}</span>
+      <span>{t(label)}</span>
     </div>
   )
 }
@@ -166,7 +179,7 @@ function AdminFinancePage({ section }: { section: Section }) {
         setBookingSales(data.bookingSales)
       }
     }).catch((cause: unknown) => {
-      if (active) setError(getErrorMessage(cause, 'تعذر تحميل البيانات المالية.'))
+      if (active) setError(t(getErrorMessage(cause, 'تعذر تحميل البيانات المالية.')))
     })
     return () => { active = false }
   }, [fromDate, query, refreshKey, reportMonth, section, toDate])
@@ -179,9 +192,9 @@ function AdminFinancePage({ section }: { section: Section }) {
       await apiRequest(`/api/admin/debts/customers/${customerId}/reminder?type=${hasAccount ? 'ACCOUNTS' : 'GUESTS'}`, {
         method: 'POST',
       })
-      setNotice('تم إرسال تذكير بإجمالي المبلغ المستحق عبر الإشعارات.')
+      setNotice(t('تم إرسال تذكير بإجمالي المبلغ المستحق عبر الإشعارات.'))
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر إرسال التذكير.'))
+      setError(t(getErrorMessage(cause, 'تعذر إرسال التذكير.')))
     } finally {
       setReminderBusyId('')
     }
@@ -206,10 +219,10 @@ function AdminFinancePage({ section }: { section: Section }) {
       })
       form.reset()
       setAddDebtOpen(false)
-      setNotice('تمت إضافة الدين إلى حساب العميل.')
+      setNotice(t('تمت إضافة الدين إلى حساب العميل.'))
       setRefreshKey((value) => value + 1)
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر إضافة الدين.'))
+      setError(t(getErrorMessage(cause, 'تعذر إضافة الدين.')))
     } finally {
       setBusy(false)
     }
@@ -224,7 +237,7 @@ function AdminFinancePage({ section }: { section: Section }) {
       )
       setSelectedCustomerDetails(details)
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تحميل تفاصيل حساب العميل.'))
+      setError(t(getErrorMessage(cause, 'تعذر تحميل تفاصيل حساب العميل.')))
     }
   }
 
@@ -247,10 +260,10 @@ function AdminFinancePage({ section }: { section: Section }) {
         }),
       })
       form.reset()
-      setNotice('تم تسجيل الدفعة وخصمها من إجمالي دين العميل.')
+      setNotice(t('تم تسجيل الدفعة وخصمها من إجمالي دين العميل.'))
       setRefreshKey((value) => value + 1)
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تسجيل الدفعة.'))
+      setError(t(getErrorMessage(cause, 'تعذر تسجيل الدفعة.')))
     } finally {
       setCustomerPaymentBusyId('')
     }
@@ -275,28 +288,31 @@ function AdminFinancePage({ section }: { section: Section }) {
           notes: String(formData.get('notes')).trim() || null,
         }),
       })
-      setNotice(editingExpense ? 'تم تعديل المصروف.' : 'تم تسجيل المصروف.')
+      setNotice(t(editingExpense ? 'تم تعديل المصروف.' : 'تم تسجيل المصروف.'))
       form.reset()
       setExpenseOpen(false)
       setEditingExpense(null)
       setRefreshKey((value) => value + 1)
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تسجيل المصروف.'))
+      setError(t(getErrorMessage(cause, 'تعذر تسجيل المصروف.')))
     } finally {
       setBusy(false)
     }
   }
 
   const deleteExpense = async (expense: AdminExpense) => {
-    if (!window.confirm(`حذف المصروف «${expense.description}» بقيمة ${expense.amount.toLocaleString('ar')} ₪؟`)) return
+    const confirmation = language === 'ar'
+      ? `حذف المصروف «${expense.description}» بقيمة ${expense.amount.toLocaleString(language)} ₪؟`
+      : `Delete expense “${expense.description}” for ₪${expense.amount.toLocaleString(language)}?`
+    if (!window.confirm(confirmation)) return
     setError('')
     setNotice('')
     try {
       await apiRequest(`/api/admin/expenses/${expense.id}`, { method: 'DELETE' })
-      setNotice('تم حذف المصروف.')
+      setNotice(t('تم حذف المصروف.'))
       setRefreshKey((value) => value + 1)
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر حذف المصروف.'))
+      setError(t(getErrorMessage(cause, 'تعذر حذف المصروف.')))
     }
   }
 
@@ -313,17 +329,17 @@ function AdminFinancePage({ section }: { section: Section }) {
         <div className={`admin-panel-heading${section === 'reports' ? ' admin-report-page-heading' : ''}`}>
           <div><span className="admin-eyebrow">{t(labels[section].eyebrow)}</span><h2>{t(labels[section].title)}</h2></div>
           {section === 'reports' && <div className="admin-date-range admin-report-period">
-            <label>الفترة<input type="month" value={reportMonth}
+            <label>{t('الفترة')}<input type="month" value={reportMonth}
               onChange={(event) => {
                 setReportMonth(event.target.value || getShopDate().slice(0, 7))
                 setInvoicePage(0)
               }} /></label>
           </div>}
           {(section === 'accounts' || section === 'expenses') && <div className="admin-date-range">
-            <label>من<input type="date" value={fromDate} max={toDate}
+            <label>{t('من')}<input type="date" value={fromDate} max={toDate}
               onClick={(event) => event.currentTarget.showPicker?.()}
               onChange={(event) => setFromDate(event.target.value)} /></label>
-            <label>إلى<input type="date" value={toDate} min={fromDate}
+            <label>{t('إلى')}<input type="date" value={toDate} min={fromDate}
               onClick={(event) => event.currentTarget.showPicker?.()}
               onChange={(event) => setToDate(event.target.value)} /></label>
           </div>}
@@ -346,61 +362,61 @@ function AdminFinancePage({ section }: { section: Section }) {
             <button className="admin-secondary-button admin-add-debt-trigger" type="button"
               onClick={() => setAddDebtOpen(true)}><Plus size={15} /> {language === 'ar' ? 'إضافة دين يدوي' : 'Add manual debt'}</button>
             <div className="admin-summary-chips">
-              <span>{customers.length.toLocaleString('ar')} عميل</span>
-              <span>{indebtedCustomers.length.toLocaleString('ar')} عميل عليه دين</span>
-              <span>إجمالي الديون {totalCustomerDebt.toLocaleString('ar')} ₪</span>
+              <span>{customers.length.toLocaleString(language)} {t('عميل')}</span>
+              <span>{indebtedCustomers.length.toLocaleString(language)} {t('عميل عليه دين')}</span>
+              <span>{t('إجمالي الديون')} {totalCustomerDebt.toLocaleString(language)} ₪</span>
             </div>
             <div className="admin-finance-list">
               {indebtedCustomers.map((customer) => (
                 <article className="admin-debt-row" key={`${customer.hasAccount ? 'account' : 'guest'}-${customer.id}`}>
                   <div><strong>{customer.name}</strong>
-                    <small>{customer.hasAccount ? 'حساب مسجل' : 'حجوزات ضيف'} · {customer.visits.toLocaleString('ar')} زيارة</small>
+                    <small>{t(customer.hasAccount ? 'حساب مسجل' : 'حجوزات ضيف')} · {customer.visits.toLocaleString(language)} {t('زيارة')}</small>
                     <small dir="ltr">{customer.phoneNumber || '—'}</small></div>
-                  <strong className="admin-debt-value">إجمالي الدين {customer.outstandingDebt.toLocaleString('ar')} ₪</strong>
+                  <strong className="admin-debt-value">{t('إجمالي الدين')} {customer.outstandingDebt.toLocaleString(language)} ₪</strong>
                   <div className="admin-debt-actions">
                     <div className="admin-debt-action-row">
                       <button className="admin-debt-reminder" type="button"
                         disabled={reminderBusyId === customer.id}
                         onClick={() => void sendCustomerDebtReminder(customer.id, customer.hasAccount)}>
                         <BellRing size={16} />
-                        {reminderBusyId === customer.id ? 'جارٍ الإرسال...' : 'تذكير بالإجمالي عبر الإشعار'}
+                        {reminderBusyId === customer.id ? t('جارٍ الإرسال...') : t('تذكير بالإجمالي عبر الإشعار')}
                       </button>
                       <button className="admin-icon-button admin-debt-detail-trigger" type="button"
-                        aria-label={`عرض الحركات غير المسددة لـ ${customer.name}`} title="الحركات غير المسددة"
+                        aria-label={`${t('عرض الحركات غير المسددة لـ')} ${customer.name}`} title={t('الحركات غير المسددة')}
                         onClick={() => void showCustomerDetails(customer)}><Eye size={16} /></button>
                     </div>
                     <form className="admin-debt-payment" onSubmit={(event) =>
                       void submitCustomerPayment(event, customer.id, customer.hasAccount)}>
-                      <input name="amount" aria-label={`المبلغ المدفوع من ${customer.name}`} type="number"
-                        min="0.01" max={customer.outstandingDebt} step="0.01" placeholder="مبلغ الدفعة" required />
-                      <select name="method" aria-label="طريقة الدفع">{methods.map((method) =>
-                        <option key={method.value} value={method.value}>{method.label}</option>)}</select>
+                      <input name="amount" aria-label={`${t('المبلغ المدفوع من')} ${customer.name}`} type="number"
+                        min="0.01" max={customer.outstandingDebt} step="0.01" placeholder={t('مبلغ الدفعة')} required />
+                      <select name="method" aria-label={t('طريقة الدفع')}>{methods.map((method) =>
+                        <option key={method.value} value={method.value}>{t(method.label)}</option>)}</select>
                       <button className="admin-secondary-button" disabled={customerPaymentBusyId === customer.id}>
-                        {customerPaymentBusyId === customer.id ? 'جارٍ التسجيل...' : 'تسجيل دفعة'}
+                        {customerPaymentBusyId === customer.id ? t('جارٍ التسجيل...') : t('تسجيل دفعة')}
                       </button>
                     </form>
                   </div>
                 </article>
               ))}
               {!indebtedCustomers.length
-                && <p className="admin-empty-inline">لا توجد أرصدة مستحقة حالياً.</p>}
+                && <p className="admin-empty-inline">{t('لا توجد أرصدة مستحقة حالياً.')}</p>}
             </div>
             <div className="admin-finance-ledger-toggle-row">
               <button className="admin-secondary-button admin-finance-ledger-toggle" type="button"
                 aria-expanded={paymentsOpen} onClick={() => setPaymentsOpen((open) => !open)}>
-                <History size={15} /> {paymentsOpen ? 'إخفاء سجل الدفعات' : 'عرض سجل الدفعات'}
-                <span>{payments.length.toLocaleString('ar')}</span>
+                <History size={15} /> {t(paymentsOpen ? 'إخفاء سجل الدفعات' : 'عرض سجل الدفعات')}
+                <span>{payments.length.toLocaleString(language)}</span>
               </button>
             </div>
             {paymentsOpen && <>
-              <h3 className="admin-subheading">سجل الدفعات</h3>
+              <h3 className="admin-subheading">{t('سجل الدفعات')}</h3>
               <div className="admin-finance-list">
                 {payments.map((payment) => <div className="admin-finance-row" key={payment.id}>
-                  <div><strong>{payment.customerName}</strong><small>{payment.notes || payment.method}</small></div>
-                  <span>{new Date(payment.paidAt).toLocaleString('ar')}</span>
-                  <strong>{payment.amount.toLocaleString('ar')} ₪</strong>
+                  <div><strong>{payment.customerName}</strong><small>{payment.notes || paymentMethodLabel(payment.method, t)}</small></div>
+                  <span>{new Date(payment.paidAt).toLocaleString(language)}</span>
+                  <strong>{payment.amount.toLocaleString(language)} ₪</strong>
                 </div>)}
-                {!payments.length && <p className="admin-empty-inline">لا توجد دفعات في الفترة المحددة.</p>}
+                {!payments.length && <p className="admin-empty-inline">{t('لا توجد دفعات في الفترة المحددة.')}</p>}
               </div>
             </>}
           </>
@@ -409,121 +425,121 @@ function AdminFinancePage({ section }: { section: Section }) {
         {section === 'expenses' && (
           <div className="admin-expenses-view">
             <button className="admin-secondary-button admin-expense-trigger" type="button"
-              onClick={() => { setEditingExpense(null); setExpenseOpen(true) }}><Plus size={15} /> تسجيل مصروف</button>
+              onClick={() => { setEditingExpense(null); setExpenseOpen(true) }}><Plus size={15} /> {t('تسجيل مصروف')}</button>
             <div className="admin-finance-list">
               {expenses.map((expense) => <div className="admin-finance-row" key={expense.id}>
-                <div><strong>{expense.description}</strong><small>{expense.category} · {expense.method}</small></div>
-                <span>{expense.expenseDate}</span><strong>{expense.amount.toLocaleString('ar')} ₪</strong>
+                <div><strong>{expense.description}</strong><small>{expense.category} · {paymentMethodLabel(expense.method, t)}</small></div>
+                <span>{expense.expenseDate}</span><strong>{expense.amount.toLocaleString(language)} ₪</strong>
                 <div className="admin-expense-actions">
-                  <button className="admin-icon-button" type="button" aria-label={`تعديل المصروف ${expense.description}`}
-                    title="تعديل" onClick={() => { setEditingExpense(expense); setExpenseOpen(true) }}><Pencil size={15} /></button>
-                  <button className="admin-icon-button admin-icon-button--danger" type="button" aria-label={`حذف المصروف ${expense.description}`}
-                    title="حذف" onClick={() => void deleteExpense(expense)}><Trash2 size={15} /></button>
+                  <button className="admin-icon-button" type="button" aria-label={`${t('تعديل المصروف')} ${expense.description}`}
+                    title={t('تعديل')} onClick={() => { setEditingExpense(expense); setExpenseOpen(true) }}><Pencil size={15} /></button>
+                  <button className="admin-icon-button admin-icon-button--danger" type="button" aria-label={`${t('حذف المصروف')} ${expense.description}`}
+                    title={t('حذف')} onClick={() => void deleteExpense(expense)}><Trash2 size={15} /></button>
                 </div>
               </div>)}
-              {!expenses.length && <p className="admin-empty-inline">لا توجد مصروفات مسجلة.</p>}
+              {!expenses.length && <p className="admin-empty-inline">{t('لا توجد مصروفات مسجلة.')}</p>}
             </div>
           </div>
         )}
 
         {section === 'reports' && (
-          !report ? <p className="admin-state">جارٍ تحميل التقرير...</p> : (
+          !report ? <p className="admin-state">{t('جارٍ تحميل التقرير...')}</p> : (
             <div className="admin-report-content">
               <div className="admin-report-grid">
-                <article className="report-card--income"><CreditCard size={19} /><span>الإيرادات المحصلة</span><strong>{report.collectedRevenue.toLocaleString('ar')} ₪</strong></article>
-                <article className="report-card--expense"><BarChart3 size={19} /><span>المصروفات</span><strong>{report.expenses.toLocaleString('ar')} ₪</strong></article>
-                <article className="admin-report-profit report-card--profit"><CircleDollarSign size={19} /><span>صافي التدفق</span>
-                  <strong>{report.netProfit.toLocaleString('ar')} ₪</strong></article>
-                <article className="report-card--debt"><Wallet size={19} /><span>ديون غير محصلة</span><strong>{report.outstandingDebt.toLocaleString('ar')} ₪</strong></article>
+                <article className="report-card--income"><CreditCard size={19} /><span>{t('الإيرادات المحصلة')}</span><strong>{report.collectedRevenue.toLocaleString(language)} ₪</strong></article>
+                <article className="report-card--expense"><BarChart3 size={19} /><span>{t('المصروفات')}</span><strong>{report.expenses.toLocaleString(language)} ₪</strong></article>
+                <article className="admin-report-profit report-card--profit"><CircleDollarSign size={19} /><span>{t('صافي التدفق')}</span>
+                  <strong>{report.netProfit.toLocaleString(language)} ₪</strong></article>
+                <article className="report-card--debt"><Wallet size={19} /><span>{t('ديون غير محصلة')}</span><strong>{report.outstandingDebt.toLocaleString(language)} ₪</strong></article>
               </div>
-              <p className="admin-report-note">الإيراد يُحتسب عند تسجيل الدفع فقط؛ الحجوزات غير المدفوعة لا تدخل في الإيرادات.</p>
+              <p className="admin-report-note">{t('الإيراد يُحتسب عند تسجيل الدفع فقط؛ الحجوزات غير المدفوعة لا تدخل في الإيرادات.')}</p>
               <div className="admin-report-highlights">
               <section className="admin-report-detail admin-report-highlight">
-                <div className="admin-report-section-heading"><div><span className="admin-eyebrow">الأداء</span>
-                  <h3>الخدمات الأكثر طلباً</h3></div><span className="admin-report-period-chip">هذا الشهر</span></div>
+                <div className="admin-report-section-heading"><div><span className="admin-eyebrow">{t('الأداء')}</span>
+                  <h3>{t('الخدمات الأكثر طلباً')}</h3></div><span className="admin-report-period-chip">{t('هذا الشهر')}</span></div>
                 {bestSellingServices.length ? <div className="admin-report-highlight-layout">
                   <ReportDonut values={bestSellingServices.map((service) => service.bookingCount)}
                     labels={bestSellingServices.map((service) => service.serviceName)} valueUnit="حجز"
-                    centerValue={bestSellingServices.reduce((total, service) => total + service.bookingCount, 0).toLocaleString('ar')}
+                    centerValue={bestSellingServices.reduce((total, service) => total + service.bookingCount, 0).toLocaleString(language)}
                     centerLabel="حجز" label="توزيع الحجوزات" />
                   <div className="admin-report-highlight-rows">{bestSellingServices.map((service) => (
                   <div className="admin-report-product-row" key={service.serviceName}>
-                    <span className="admin-report-rank">{(bestSellingServices.indexOf(service) + 1).toLocaleString('ar')}</span>
+                    <span className="admin-report-rank">{(bestSellingServices.indexOf(service) + 1).toLocaleString(language)}</span>
                     <div className="admin-report-product-main"><strong>{service.serviceName}</strong>
-                      <small>{service.bookingCount.toLocaleString('ar')} حجز</small></div>
-                    <strong className="admin-report-product-value">{service.serviceRevenue.toLocaleString('ar')} ₪</strong>
+                      <small>{service.bookingCount.toLocaleString(language)} {t('حجز')}</small></div>
+                    <strong className="admin-report-product-value">{service.serviceRevenue.toLocaleString(language)} ₪</strong>
                   </div>
                   ))}</div>
-                </div> : <p className="admin-state">لا توجد خدمات مكتملة في هذا الشهر.</p>}
+                </div> : <p className="admin-state">{t('لا توجد خدمات مكتملة في هذا الشهر.')}</p>}
               </section>
               <section className="admin-report-detail admin-report-highlight">
-                <div className="admin-report-section-heading"><div><span className="admin-eyebrow">المبيعات</span>
-                  <h3>المنتجات الأكثر مبيعاً</h3></div><span className="admin-report-period-chip">هذا الشهر</span></div>
+                <div className="admin-report-section-heading"><div><span className="admin-eyebrow">{t('المبيعات')}</span>
+                  <h3>{t('المنتجات الأكثر مبيعاً')}</h3></div><span className="admin-report-period-chip">{t('هذا الشهر')}</span></div>
                 {bestSellingProducts.length ? <div className="admin-report-highlight-layout">
                   <ReportDonut values={bestSellingProducts.map((product) => product.salesTotal)}
                     labels={bestSellingProducts.map((product) => product.productName)} valueUnit="₪"
-                    centerValue={`${bestSellingProducts.reduce((total, product) => total + product.salesTotal, 0).toLocaleString('ar')} ₪`}
+                    centerValue={`${bestSellingProducts.reduce((total, product) => total + product.salesTotal, 0).toLocaleString(language)} ₪`}
                     centerLabel="مبيعات" label="توزيع المبيعات" />
                   <div className="admin-report-highlight-rows">{bestSellingProducts.map((product) => (
                   <div className="admin-report-product-row" key={`${product.productName}-${product.unit}`}>
-                    <span className="admin-report-rank">{(bestSellingProducts.indexOf(product) + 1).toLocaleString('ar')}</span>
+                    <span className="admin-report-rank">{(bestSellingProducts.indexOf(product) + 1).toLocaleString(language)}</span>
                     <div className="admin-report-product-main"><strong>{product.productName}</strong>
-                      <small>{product.quantitySold.toLocaleString('ar')} {product.unit} · {product.bookingCount.toLocaleString('ar')} فاتورة</small></div>
-                    <strong className="admin-report-product-value">{product.salesTotal.toLocaleString('ar')} ₪</strong>
+                      <small>{product.quantitySold.toLocaleString(language)} {product.unit} · {product.bookingCount.toLocaleString(language)} فاتورة</small></div>
+                    <strong className="admin-report-product-value">{product.salesTotal.toLocaleString(language)} ₪</strong>
                   </div>
                   ))}</div>
-                </div> : <p className="admin-state">لا توجد منتجات مباعة في هذا الشهر.</p>}
+                </div> : <p className="admin-state">{t('لا توجد منتجات مباعة في هذا الشهر.')}</p>}
               </section>
               </div>
               <section className="admin-report-detail admin-report-invoices-section">
-                <div className="admin-report-section-heading"><div><span className="admin-eyebrow">سجل العمليات</span>
-                  <h3>الفواتير المكتملة</h3></div><span className="admin-report-period-chip">{bookingSales.length.toLocaleString('ar')} فاتورة</span></div>
-                <p className="admin-report-invoice-hint">اضغط على الفاتورة لعرض تفاصيل الخدمة والمنتجات.</p>
+                <div className="admin-report-section-heading"><div><span className="admin-eyebrow">{t('سجل العمليات')}</span>
+                  <h3>{t('الفواتير المكتملة')}</h3></div><span className="admin-report-period-chip">{bookingSales.length.toLocaleString(language)} {t('فاتورة')}</span></div>
+                <p className="admin-report-invoice-hint">{t('اضغط على الفاتورة لعرض تفاصيل الخدمة والمنتجات.')}</p>
                 {bookingSales.length ? <div className="admin-report-invoice-list">
                   {bookingSales.slice(invoicePage * 5, invoicePage * 5 + 5).map((booking) => (
                     <details className="admin-report-invoice" key={booking.bookingId}>
                       <summary className="admin-report-invoice-summary">
                         <span className="admin-report-invoice-customer"><strong>{booking.customerName}</strong>
-                          <small>{new Date(booking.completedAt).toLocaleString('ar')}</small></span>
+                          <small>{new Date(booking.completedAt).toLocaleString(language)}</small></span>
                         <span className="admin-report-invoice-service">{booking.serviceName}
-                          {booking.products.length > 0 && <small> + {booking.products.length.toLocaleString('ar')} منتجات</small>}</span>
-                        <span className="admin-report-invoice-paid"><strong>{booking.amountPaid.toLocaleString('ar')} ₪</strong>
-                          <small>من {booking.invoiceTotal.toLocaleString('ar')} ₪</small></span>
+                          {booking.products.length > 0 && <small> + {booking.products.length.toLocaleString(language)} {t('منتجات')}</small>}</span>
+                        <span className="admin-report-invoice-paid"><strong>{booking.amountPaid.toLocaleString(language)} ₪</strong>
+                          <small>{t('من')} {booking.invoiceTotal.toLocaleString(language)} ₪</small></span>
                         <ChevronDown size={17} className="admin-report-invoice-chevron" />
                       </summary>
                       <div className="admin-report-invoice-details">
                         <div className="admin-report-product-row">
-                          <strong>{booking.serviceName}</strong><span>الخدمة</span>
-                          <span>{booking.servicePrice.toLocaleString('ar')} ₪</span>
+                          <strong>{booking.serviceName}</strong><span>{t('الخدمة')}</span>
+                          <span>{booking.servicePrice.toLocaleString(language)} ₪</span>
                         </div>
                         {booking.products.map((product, index) => (
                           <div className="admin-report-product-row" key={`${product.productName}-${index}`}>
                             <strong>{product.productName}</strong>
-                            <span>{product.quantity.toLocaleString('ar')} {product.unit} × {product.unitPrice.toLocaleString('ar')} ₪</span>
-                            <strong>{product.lineTotal.toLocaleString('ar')} ₪</strong>
+                            <span>{product.quantity.toLocaleString(language)} {product.unit} × {product.unitPrice.toLocaleString(language)} ₪</span>
+                            <strong>{product.lineTotal.toLocaleString(language)} ₪</strong>
                           </div>
                         ))}
                         <div className="admin-report-invoice-total">
-                          <span>الإجمالي {booking.invoiceTotal.toLocaleString('ar')} ₪</span>
-                          <span>المقبوض {booking.amountPaid.toLocaleString('ar')} ₪</span>
-                          {booking.balance > 0 && <strong>المتبقي {booking.balance.toLocaleString('ar')} ₪</strong>}
+                          <span>{t('الإجمالي')} {booking.invoiceTotal.toLocaleString(language)} ₪</span>
+                          <span>{t('المقبوض')} {booking.amountPaid.toLocaleString(language)} ₪</span>
+                          {booking.balance > 0 && <strong>{t('المتبقي')} {booking.balance.toLocaleString(language)} ₪</strong>}
                         </div>
                       </div>
                     </details>
                   ))}
-                  {bookingSales.length > 5 && <div className="admin-report-pagination" aria-label="صفحات الفواتير">
+                  {bookingSales.length > 5 && <div className="admin-report-pagination" aria-label={t('صفحات الفواتير')}>
                     <button className="admin-secondary-button" type="button" disabled={invoicePage === 0}
                       onClick={() => setInvoicePage((page) => Math.max(0, page - 1))}>
-                      <ChevronRight size={15} /> السابق
+                      <ChevronRight size={15} /> {t('السابق')}
                     </button>
-                    <span>صفحة {(invoicePage + 1).toLocaleString('ar')} من {Math.ceil(bookingSales.length / 5).toLocaleString('ar')}</span>
+                    <span>{language === 'ar' ? 'صفحة' : 'Page'} {(invoicePage + 1).toLocaleString(language)} {t('من')} {Math.ceil(bookingSales.length / 5).toLocaleString(language)}</span>
                     <button className="admin-secondary-button" type="button"
                       disabled={(invoicePage + 1) * 5 >= bookingSales.length}
                       onClick={() => setInvoicePage((page) => Math.min(Math.ceil(bookingSales.length / 5) - 1, page + 1))}>
-                      التالي <ChevronLeft size={15} />
+                      {t('التالي')} <ChevronLeft size={15} />
                     </button>
                   </div>}
-                </div> : <p className="admin-state">لا توجد فواتير مكتملة في هذا الشهر.</p>}
+                </div> : <p className="admin-state">{t('لا توجد فواتير مكتملة في هذا الشهر.')}</p>}
               </section>
             </div>
           )
@@ -537,22 +553,22 @@ function AdminFinancePage({ section }: { section: Section }) {
           <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
             aria-labelledby="create-expense-title">
             <div className="admin-panel-heading">
-              <div><span className="admin-eyebrow">المصروفات</span>
-                <h2 id="create-expense-title">{editingExpense ? 'تعديل المصروف' : 'تسجيل مصروف'}</h2></div>
-              <button className="admin-icon-button" type="button" aria-label="إغلاق"
+              <div><span className="admin-eyebrow">{t('المصروفات')}</span>
+                <h2 id="create-expense-title">{t(editingExpense ? 'تعديل المصروف' : 'تسجيل مصروف')}</h2></div>
+              <button className="admin-icon-button" type="button" aria-label={t('إغلاق')}
                 onClick={() => setExpenseOpen(false)}><X size={17} /></button>
             </div>
             <form className="admin-form admin-expense-form" onSubmit={(event) => void createExpense(event)}>
-              <label>التصنيف<input name="category" maxLength={80} defaultValue={editingExpense?.category ?? ''} placeholder="إيجار، أدوات، فواتير..." required /></label>
-              <label>البيان<input name="description" maxLength={500} defaultValue={editingExpense?.description ?? ''} required /></label>
-              <label>المبلغ (₪)<input name="amount" type="number" min="0.01" step="0.01" defaultValue={editingExpense?.amount ?? ''} required /></label>
-              <label>التاريخ<input name="expenseDate" type="date" defaultValue={editingExpense?.expenseDate ?? getShopDate()}
+              <label>{t('التصنيف')}<input name="category" maxLength={80} defaultValue={editingExpense?.category ?? ''} placeholder={t('إيجار، أدوات، فواتير...')} required /></label>
+              <label>{t('البيان')}<input name="description" maxLength={500} defaultValue={editingExpense?.description ?? ''} required /></label>
+              <label>{t('المبلغ (₪)')}<input name="amount" type="number" min="0.01" step="0.01" defaultValue={editingExpense?.amount ?? ''} required /></label>
+              <label>{t('التاريخ')}<input name="expenseDate" type="date" defaultValue={editingExpense?.expenseDate ?? getShopDate()}
                 onClick={(event) => event.currentTarget.showPicker?.()} required /></label>
-              <label>طريقة الدفع<select name="method" defaultValue={editingExpense?.method ?? 'CASH'}>{methods.map((method) =>
-                <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
-              <label>ملاحظات<input name="notes" maxLength={1000} defaultValue={editingExpense?.notes ?? ''} /></label>
+              <label>{t('طريقة الدفع')}<select name="method" defaultValue={editingExpense?.method ?? 'CASH'}>{methods.map((method) =>
+                <option key={method.value} value={method.value}>{t(method.label)}</option>)}</select></label>
+              <label>{t('ملاحظات')}<input name="notes" maxLength={1000} defaultValue={editingExpense?.notes ?? ''} /></label>
               <button className="admin-primary-button" disabled={busy}>
-                {busy ? 'جارٍ الحفظ...' : editingExpense ? 'حفظ التعديل' : 'حفظ المصروف'}
+                {busy ? t('جارٍ الحفظ...') : editingExpense ? t('حفظ التعديل') : t('حفظ المصروف')}
               </button>
             </form>
           </section>
@@ -567,18 +583,18 @@ function AdminFinancePage({ section }: { section: Section }) {
           <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
             aria-labelledby="add-manual-debt-title">
             <div className="admin-panel-heading">
-              <div><span className="admin-eyebrow">الحسابات والديون</span>
-                <h2 id="add-manual-debt-title">إضافة دين يدوي</h2></div>
-              <button className="admin-icon-button" type="button" aria-label="إغلاق"
+              <div><span className="admin-eyebrow">{t('الحسابات والديون')}</span>
+                <h2 id="add-manual-debt-title">{t('إضافة دين يدوي')}</h2></div>
+              <button className="admin-icon-button" type="button" aria-label={t('إغلاق')}
                 onClick={() => setAddDebtOpen(false)}><X size={17} /></button>
             </div>
             <form className="admin-form admin-manual-debt-form" onSubmit={(event) => void addManualDebt(event)}>
-              <label>اسم العميل<input name="customerName" maxLength={150} required /></label>
-              <label>رقم الهاتف<input name="phoneNumber" type="tel" maxLength={32} required /></label>
-              <label>سبب الدين<input name="description" maxLength={500} placeholder="خدمة، منتج، أو سبب آخر" required /></label>
-              <label>المبلغ (₪)<input name="amount" type="number" min="0.01" step="0.01" required /></label>
+              <label>{t('اسم العميل')}<input name="customerName" maxLength={150} required /></label>
+              <label>{t('رقم الهاتف')}<input name="phoneNumber" type="tel" maxLength={32} required /></label>
+              <label>{t('سبب الدين')}<input name="description" maxLength={500} placeholder={t('خدمة، منتج، أو سبب آخر')} required /></label>
+              <label>{t('المبلغ (₪)')}<input name="amount" type="number" min="0.01" step="0.01" required /></label>
               <button className="admin-primary-button" disabled={busy}>
-                {busy ? 'جارٍ الحفظ...' : 'إضافة الدين'}
+                {busy ? t('جارٍ الحفظ...') : t('إضافة الدين')}
               </button>
             </form>
           </section>
@@ -593,36 +609,36 @@ function AdminFinancePage({ section }: { section: Section }) {
           <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
             aria-labelledby="finance-customer-details-title">
             <div className="admin-panel-heading">
-              <div><span className="admin-eyebrow">كشف الحساب</span>
+              <div><span className="admin-eyebrow">{t('كشف الحساب')}</span>
                 <h2 id="finance-customer-details-title">{selectedCustomerDetails.customer.name}</h2></div>
-              <button className="admin-icon-button" type="button" aria-label="إغلاق"
+              <button className="admin-icon-button" type="button" aria-label={t('إغلاق')}
                 onClick={() => setSelectedCustomerDetails(null)}><X size={17} /></button>
             </div>
             <p className="admin-contact-line" dir="ltr">{selectedCustomerDetails.customer.phoneNumber || '—'}</p>
             <div className="admin-summary-chips">
-              <span>إجمالي المتبقي {selectedCustomerDetails.customer.outstandingDebt.toLocaleString('ar')} ₪</span>
+              <span>{t('إجمالي المتبقي')} {selectedCustomerDetails.customer.outstandingDebt.toLocaleString(language)} ₪</span>
             </div>
-            <h3 className="admin-subheading">الحركات غير المسددة بالكامل</h3>
+            <h3 className="admin-subheading">{t('الحركات غير المسددة بالكامل')}</h3>
             {unpaidBookingDetails.map((booking) => (
               <article className="admin-customer-report-booking" key={booking.id}>
                 <div className="admin-history-row">
-                  <span>{booking.serviceName}</span><span>{booking.status}</span>
-                  <strong>الإجمالي {booking.totalAmount.toLocaleString('ar')} ₪</strong>
-                  <small>{new Date(booking.createdAt).toLocaleDateString('ar')}</small>
+                  <span>{booking.serviceName}</span><span>{t(bookingStatusNames[booking.status] ?? booking.status)}</span>
+                  <strong>{t('الإجمالي')} {booking.totalAmount.toLocaleString(language)} ₪</strong>
+                  <small>{new Date(booking.createdAt).toLocaleDateString(language)}</small>
                 </div>
                 {booking.products.map((product, index) => (
                   <p className="admin-customer-purchases" key={`${product.productName}-${index}`}>
-                    {product.productName} · {product.quantity.toLocaleString('ar')} {product.unit}
-                    {' · '}{product.lineTotal.toLocaleString('ar')} ₪
+                    {product.productName} · {product.quantity.toLocaleString(language)} {product.unit}
+                    {' · '}{product.lineTotal.toLocaleString(language)} ₪
                   </p>
                 ))}
                 <div className="admin-history-row">
-                  <span>المدفوع {booking.paidAmount.toLocaleString('ar')} ₪</span>
-                  <strong>المتبقي {booking.outstandingBalance.toLocaleString('ar')} ₪</strong>
+                  <span>{t('المدفوع')} {booking.paidAmount.toLocaleString(language)} ₪</span>
+                  <strong>{t('المتبقي')} {booking.outstandingBalance.toLocaleString(language)} ₪</strong>
                 </div>
                 {selectedCustomerDetails.payments.filter((payment) => payment.bookingId === booking.id).map((payment) => (
                   <small className="admin-customer-purchases" key={payment.id}>
-                    دفعة {payment.amount.toLocaleString('ar')} ₪ · {payment.method}
+                    {t('دفعة')} {payment.amount.toLocaleString(language)} ₪ · {paymentMethodLabel(payment.method, t)}
                     {payment.notes ? ` · ${payment.notes}` : ''}
                   </small>
                 ))}
@@ -630,21 +646,21 @@ function AdminFinancePage({ section }: { section: Section }) {
             ))}
             {unpaidManualDebts.map((debt) => (
               <article className="admin-customer-report-booking" key={debt.id}>
-                <strong>دين يدوي · {debt.description}</strong>
+                <strong>{t('دين يدوي')} · {debt.description}</strong>
                 <div className="admin-history-row">
-                  <span>المبلغ {debt.totalAmount.toLocaleString('ar')} ₪</span>
-                  <span>المدفوع {debt.paidAmount.toLocaleString('ar')} ₪</span>
-                  <strong>المتبقي {debt.outstandingBalance.toLocaleString('ar')} ₪</strong>
-                  <small>{new Date(debt.createdAt).toLocaleDateString('ar')}</small>
+                  <span>{t('المبلغ')} {debt.totalAmount.toLocaleString(language)} ₪</span>
+                  <span>{t('المدفوع')} {debt.paidAmount.toLocaleString(language)} ₪</span>
+                  <strong>{t('المتبقي')} {debt.outstandingBalance.toLocaleString(language)} ₪</strong>
+                  <small>{new Date(debt.createdAt).toLocaleDateString(language)}</small>
                 </div>
                 {debt.payments.map((payment) => <small className="admin-customer-purchases" key={payment.id}>
-                  دفعة {payment.amount.toLocaleString('ar')} ₪ · {payment.method}
+                  {t('دفعة')} {payment.amount.toLocaleString(language)} ₪ · {paymentMethodLabel(payment.method, t)}
                   {payment.notes ? ` · ${payment.notes}` : ''}
                 </small>)}
               </article>
             ))}
             {!unpaidBookingDetails.length && !unpaidManualDebts.length
-              && <p className="admin-state">لا توجد حركات عليها مبلغ متبقٍ.</p>}
+              && <p className="admin-state">{t('لا توجد حركات عليها مبلغ متبقٍ.')}</p>}
           </section>
         </div>,
         document.body,

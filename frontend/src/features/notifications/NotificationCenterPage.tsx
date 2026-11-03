@@ -4,6 +4,7 @@ import { Bell, CheckCheck, RefreshCw, Settings, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest, getErrorMessage } from '../../lib/api'
 import { formatShopDateTime } from '../../lib/shop-time'
+import { translateNotificationMessage, useI18n } from '../../lib/i18n'
 import NotificationSettingsPage from './NotificationSettingsPage'
 
 interface NotificationItem {
@@ -26,6 +27,7 @@ interface NotificationCenter {
 }
 
 function NotificationCenterPage() {
+  const { t, language } = useI18n()
   const navigate = useNavigate()
   const isOwner = window.location.pathname.startsWith('/owner')
   const [center, setCenter] = useState<NotificationCenter | null>(null)
@@ -100,33 +102,33 @@ function NotificationCenterPage() {
     <section className={`notification-center${isOwner ? ' notification-center--owner' : ''}`}>
       <header className="notification-center-heading">
         <div>
-          <span className="notification-center-eyebrow">{isOwner ? 'إدارة المحل' : 'مساحة العميل'}</span>
-          <h1>الإشعارات</h1>
-          <p>كل تحديثات حسابك في مكان واحد.</p>
+          <span className="notification-center-eyebrow">{t(isOwner ? 'إدارة المحل' : 'مساحة العميل')}</span>
+          <h1>{t('الإشعارات')}</h1>
+          <p>{t('كل تحديثات حسابك في مكان واحد.')}</p>
         </div>
         <div className="notification-center-actions">
-          <span className="notification-unread-count">{(center?.unreadCount ?? 0).toLocaleString('ar')} غير مقروء</span>
+          <span className="notification-unread-count">{(center?.unreadCount ?? 0).toLocaleString(language)} {t('غير مقروء')}</span>
           <button type="button" onClick={() => { setLoading(true); void load() }} disabled={loading}>
-            <RefreshCw size={16} /> تحديث
+            <RefreshCw size={16} /> {t('تحديث')}
           </button>
           {!!center?.unreadCount && (
             <button type="button" onClick={() => void markAllRead()}>
-              <CheckCheck size={16} /> تحديد الكل كمقروء
+              <CheckCheck size={16} /> {t('تحديد الكل كمقروء')}
             </button>
           )}
           <button className="notification-settings-trigger" type="button"
-            aria-label="إعدادات الإشعارات" title="إعدادات الإشعارات"
+            aria-label={t('إعدادات الإشعارات')} title={t('إعدادات الإشعارات')}
             onClick={() => setSettingsOpen(true)}>
-            <Settings size={17} /> <span>الإعدادات</span>
+            <Settings size={17} /> <span>{t('الإعدادات')}</span>
           </button>
         </div>
       </header>
 
-      {error && <p className="notification-feedback notification-feedback--error" role="alert">{error}</p>}
+      {error && <p className="notification-feedback notification-feedback--error" role="alert">{t(error)}</p>}
 
-      <section className="notification-feed" aria-label="قائمة الإشعارات">
-        <h2>آخر الإشعارات</h2>
-        {loading ? <p className="notification-empty" role="status">جارٍ تحميل الإشعارات...</p>
+      <section className="notification-feed" aria-label={t('قائمة الإشعارات')}>
+        <h2>{t('آخر الإشعارات')}</h2>
+        {loading ? <p className="notification-empty" role="status">{t('جارٍ تحميل الإشعارات...')}</p>
           : center?.content.length ? center.content.map((item) => (
             <button
               type="button"
@@ -136,13 +138,13 @@ function NotificationCenterPage() {
             >
               <span className="notification-feed-icon"><Bell size={18} /></span>
               <span className="notification-feed-copy">
-                <strong>{item.title}</strong>
-                <span>{item.body}</span>
-                <small>{formatShopDateTime(item.createdAt)}</small>
+                <strong>{t(item.title)}</strong>
+                <span>{translateNotificationMessage(item.body, language, t)}</span>
+                <small>{formatShopDateTime(item.createdAt, language)}</small>
               </span>
-              {!item.readAt && <span className="notification-unread-dot" aria-label="غير مقروء" />}
+              {!item.readAt && <span className="notification-unread-dot" aria-label={t('غير مقروء')} />}
             </button>
-          )) : <p className="notification-empty">لا توجد إشعارات حالياً.</p>}
+          )) : <p className="notification-empty">{t('لا توجد إشعارات حالياً.')}</p>}
       </section>
       {settingsOpen && createPortal(
         <div className="notification-settings-modal-backdrop" role="presentation"
@@ -150,8 +152,8 @@ function NotificationCenterPage() {
             if (event.target === event.currentTarget) setSettingsOpen(false)
           }}>
           <section className="notification-settings-modal" role="dialog" aria-modal="true"
-            aria-label="إعدادات الإشعارات">
-            <button className="notification-settings-modal-close" type="button" aria-label="إغلاق الإعدادات"
+            aria-label={t('إعدادات الإشعارات')}>
+            <button className="notification-settings-modal-close" type="button" aria-label={t('إغلاق الإعدادات')}
               onClick={() => setSettingsOpen(false)}><X size={19} /></button>
             <NotificationSettingsPage embedded />
           </section>

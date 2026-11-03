@@ -347,14 +347,14 @@ function AdminInventoryPage() {
                       <h3 className="admin-subheading">{t('آخر الحركات')}</h3>
                       {history[product.id]?.length ? history[product.id].map((movement) => (
                         <div className="admin-history-row" key={movement.id}>
-                          <span>{movementNames[movement.movementType]}</span>
-                          <strong>{movement.quantity.toLocaleString('ar')} {product.unit}</strong>
+                          <span>{t(movementNames[movement.movementType])}</span>
+                          <strong>{movement.quantity.toLocaleString(language)} {product.unit}</strong>
                           {movement.movementType === 'SALE' && (movement.unitPrice !== null
                             ? <span>{t('سعر الوحدة')} {movement.unitPrice.toLocaleString(language === 'ar' ? 'ar-PS' : 'en-US')} ₪ · {t('الإجمالي')} {(movement.lineTotal ?? movement.unitPrice * movement.quantity).toLocaleString(language === 'ar' ? 'ar-PS' : 'en-US')} ₪</span>
                             : <span>{t('سعر البيع غير مسجل لهذه الحركة')}</span>)}
                           {movement.movementType !== 'SALE' && movement.unitCost !== null
                             && <span>{t('تكلفة الوحدة')} {movement.unitCost.toLocaleString(language === 'ar' ? 'ar-PS' : 'en-US')} ₪</span>}
-                          <small>{new Date(movement.createdAt).toLocaleString('ar')}</small>
+                          <small>{new Date(movement.createdAt).toLocaleString(language)}</small>
                           {movement.notes && <small>{movement.notes}</small>}
                         </div>
                       )) : <p className="admin-state">{t('لا توجد حركات مسجلة.')}</p>}

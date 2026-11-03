@@ -191,8 +191,11 @@ public class AdminManagementService {
 		long pending = scalarLong("SELECT count(*) FROM bookings WHERE status = 'PENDING'");
 		long todayBookings = jdbc.queryForObject("""
 				SELECT count(*) FROM bookings
-				WHERE queue_date = ? OR (queue_date IS NULL AND starts_at >= ? AND starts_at < ?)
-				""", Long.class, today, start(today), start(today.plusDays(1)));
+				WHERE status IN ('PENDING', 'CONFIRMED')
+				  AND (queue_date = ? OR preferred_date = ?
+				       OR (queue_date IS NULL AND preferred_date IS NULL
+				           AND starts_at >= ? AND starts_at < ?))
+				""", Long.class, today, today, start(today), start(today.plusDays(1)));
 		long customers = scalarLong("SELECT count(DISTINCT coalesce(nullif(regexp_replace(phone_number, '[^0-9]', '', 'g'), ''), id::text)) FROM customers");
 		BigDecimal collected = scalarMoney("""
 				SELECT coalesce((SELECT sum(amount) FROM booking_payments WHERE paid_at >= ? AND paid_at < ?), 0)

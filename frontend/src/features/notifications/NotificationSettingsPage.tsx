@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Bell, BellRing } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { apiRequest, getErrorMessage } from '../../lib/api'
+import { useI18n } from '../../lib/i18n'
 
 interface NotificationPreferences {
   preferences: Record<string, boolean>
@@ -60,6 +61,7 @@ function subscriptionUsesApplicationKey(subscription: PushSubscription, publicKe
 }
 
 function NotificationSettingsPage({ embedded = false }: { embedded?: boolean }) {
+  const { t } = useI18n()
   const isOwner = window.location.pathname.startsWith('/owner')
   const [preferences, setPreferences] = useState<Record<string, boolean>>({})
   const [pushConfigured, setPushConfigured] = useState(false)
@@ -188,28 +190,28 @@ function NotificationSettingsPage({ embedded = false }: { embedded?: boolean }) 
     <section className={`notification-settings-page${embedded ? ' notification-settings-page--embedded' : ''}`}>
       {!embedded && <header className="notification-settings-heading">
         <div>
-          <span>{isOwner ? 'إدارة المحل' : 'إعدادات الحساب'}</span>
-          <h1>إعدادات الإشعارات</h1>
-          <p>اسمح بالإشعارات مرة واحدة لهذا الجهاز؛ سيرتبط تلقائياً بأي حساب تسجل الدخول به.</p>
+          <span>{t(isOwner ? 'إدارة المحل' : 'إعدادات الحساب')}</span>
+          <h1>{t('إعدادات الإشعارات')}</h1>
+          <p>{t('اسمح بالإشعارات مرة واحدة لهذا الجهاز؛ سيرتبط تلقائياً بأي حساب تسجل الدخول به.')}</p>
         </div>
-        <Link to={isOwner ? '/owner/settings' : '/my-settings'}>العودة للإعدادات</Link>
+        <Link to={isOwner ? '/owner/settings' : '/my-settings'}>{t('العودة للإعدادات')}</Link>
       </header>}
-      {error && <p className="notification-feedback notification-feedback--error" role="alert">{error}</p>}
-      {notice && <p className="notification-feedback" role="status">{notice}</p>}
+      {error && <p className="notification-feedback notification-feedback--error" role="alert">{t(error)}</p>}
+      {notice && <p className="notification-feedback" role="status">{t(notice)}</p>}
       <section className="notification-settings-card">
         <div className="notification-settings-title">
           <BellRing size={20} />
-          <div><h2>إشعارات هذا الجهاز</h2><p>السماح من المتصفح مرة واحدة لكل هاتف أو تثبيت. الحساب الحالي يرتبط تلقائياً عند تسجيل الدخول، وينفصل عند تسجيل الخروج.</p></div>
+          <div><h2>{t('إشعارات هذا الجهاز')}</h2><p>{t('السماح من المتصفح مرة واحدة لكل هاتف أو تثبيت. الحساب الحالي يرتبط تلقائياً عند تسجيل الدخول، وينفصل عند تسجيل الخروج.')}</p></div>
         </div>
         <button type="button" onClick={() => void togglePush()} disabled={busy || (!pushEnabled && !pushConfigured)}>
-          {busy ? 'جارٍ التحديث...' : pushEnabled ? 'إيقاف هذا الجهاز' : 'تفعيل على هذا الجهاز'}
+          {busy ? t('جارٍ التحديث...') : pushEnabled ? t('إيقاف هذا الجهاز') : t('تفعيل على هذا الجهاز')}
         </button>
-        {!pushConfigured && <p className="notification-settings-hint">يلزم إعداد مفاتيح VAPID على الخادم واستخدام HTTPS.</p>}
+        {!pushConfigured && <p className="notification-settings-hint">{t('يلزم إعداد مفاتيح VAPID على الخادم واستخدام HTTPS.')}</p>}
       </section>
       <section className="notification-settings-card">
         <div className="notification-settings-title">
           <Bell size={20} />
-          <div><h2>أنواع الإشعارات</h2><p>إيقاف Push لنوع معين لا يخفيه من مركز الإشعارات.</p></div>
+          <div><h2>{t('أنواع الإشعارات')}</h2><p>{t('إيقاف Push لنوع معين لا يخفيه من مركز الإشعارات.')}</p></div>
         </div>
         <div className="notification-preferences">
           {Object.entries(preferenceLabels)
@@ -219,7 +221,7 @@ function NotificationSettingsPage({ embedded = false }: { embedded?: boolean }) 
             ].includes(type))
             .map(([type, label]) => (
               <label key={type}>
-                <span>{label}</span>
+                <span>{t(label)}</span>
                 <input type="checkbox" checked={preferences[type] ?? false}
                   disabled={saving === type} onChange={(event) => void updatePreference(type, event.target.checked)} />
               </label>

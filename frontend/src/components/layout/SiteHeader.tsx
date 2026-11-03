@@ -108,7 +108,7 @@ function SiteHeader() {
   return (
     <header className="site-header">
       <div className="container header-inner">
-        <Link className="brand" to="/" aria-label={`${site.brand} - الرئيسية`} onClick={closeMenu}>
+        <Link className="brand" to="/" aria-label={`${site.brand} - ${t('الرئيسية')}`} onClick={closeMenu}>
           <span className="brand-mark" aria-hidden="true"><Scissors size={19} strokeWidth={1.6} /></span>
           <span className="brand-name">{site.brand}</span>
         </Link>

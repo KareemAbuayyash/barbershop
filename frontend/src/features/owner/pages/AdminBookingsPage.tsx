@@ -518,14 +518,14 @@ function AdminBookingsPage() {
                   <strong data-label={language === 'ar' ? 'القيمة' : 'Amount'} className="admin-booking-price">{booking.servicePrice.toLocaleString(language)} ₪</strong>
                   <div data-label={language === 'ar' ? 'الإجراءات' : 'Actions'} className="admin-booking-actions">
                     {booking.status === 'PENDING' && <button type="button" className="admin-icon-button"
-                      aria-label={booking.bookingMode === 'CONFIRMATION_REQUEST'
-                        ? 'تحديد موعد وتأكيد الحجز' : 'تأكيد الحجز'}
-                      title={booking.bookingMode === 'CONFIRMATION_REQUEST'
-                        ? 'تحديد موعد وتأكيد الحجز' : 'تأكيد الحجز'}
+                      aria-label={t(booking.bookingMode === 'CONFIRMATION_REQUEST'
+                        ? 'تحديد موعد وتأكيد الحجز' : 'تأكيد الحجز')}
+                      title={t(booking.bookingMode === 'CONFIRMATION_REQUEST'
+                        ? 'تحديد موعد وتأكيد الحجز' : 'تأكيد الحجز')}
                       disabled={busyBookingId === booking.id}
                       onClick={() => void runBookingAction(booking, 'confirm')}><Check size={16} /></button>}
                     {booking.status === 'CONFIRMED' && <button type="button" className="admin-icon-button"
-                      aria-label="إنهاء الحجز وتسجيل الدفع" title="إنهاء الحجز وتسجيل الدفع"
+                      aria-label={t('إنهاء الحجز وتسجيل الدفع')} title={t('إنهاء الحجز وتسجيل الدفع')}
                       disabled={busyBookingId === booking.id}
                       onClick={() => {
                         setCompletingBookingId(booking.id)
@@ -537,32 +537,32 @@ function AdminBookingsPage() {
                         setNotice('')
                       }}><Check size={16} /></button>}
                     {booking.status === 'CONFIRMED' && booking.startsAt && <button type="button" className="admin-icon-button"
-                      aria-label="إرسال تذكير للزبون بأن موعده اقترب" title="إرسال تذكير للزبون"
+                      aria-label={t('إرسال تذكير للزبون بأن موعده اقترب')} title={t('إرسال تذكير للزبون')}
                       disabled={remindingBookingId === booking.id || busyBookingId === booking.id}
                       onClick={() => void remindCustomer(booking)}>
                       {remindingBookingId === booking.id ? <span className="admin-reminder-spinner" /> : <Bell size={16} />}
                     </button>}
                     {(booking.status === 'PENDING' || booking.status === 'CONFIRMED') && <button type="button"
-                      className="admin-icon-button admin-icon-button--danger" aria-label="إلغاء الحجز"
-                      title="إلغاء الحجز" disabled={busyBookingId === booking.id}
+                      className="admin-icon-button admin-icon-button--danger" aria-label={t('إلغاء الحجز')}
+                      title={t('إلغاء الحجز')} disabled={busyBookingId === booking.id}
                       onClick={() => void runBookingAction(booking, 'cancel')}><X size={16} /></button>}
                     {queueOnly && booking.queuePosition !== null && booking.status !== 'CANCELLED'
                       && booking.status !== 'COMPLETED' && (
                         <>
-                          <button type="button" className="admin-icon-button" aria-label="رفع ترتيب الدور"
-                            title="رفع الدور"
+                          <button type="button" className="admin-icon-button" aria-label={t('رفع ترتيب الدور')}
+                            title={t('رفع الدور')}
                             disabled={queueReordering || busyBookingId === booking.id || booking.queuePosition === 1}
                             onClick={() => void moveQueueBooking(booking, -1)}>↑</button>
-                          <button type="button" className="admin-icon-button" aria-label="خفض ترتيب الدور"
-                            title="خفض الدور"
+                          <button type="button" className="admin-icon-button" aria-label={t('خفض ترتيب الدور')}
+                            title={t('خفض الدور')}
                             disabled={queueReordering || busyBookingId === booking.id}
                             onClick={() => void moveQueueBooking(booking, 1)}>↓</button>
                         </>
                       )}
                     {(booking.status === 'PENDING' || booking.status === 'CONFIRMED')
                       && (booking.bookingMode !== 'LEGACY' || booking.startsAt) && (
-                        <button type="button" className="admin-icon-button" aria-label="تعديل الموعد"
-                          title="تعديل الموعد" disabled={busyBookingId === booking.id}
+                        <button type="button" className="admin-icon-button" aria-label={t('تعديل الموعد')}
+                          title={t('تعديل الموعد')} disabled={busyBookingId === booking.id}
                           onClick={() => {
                             if (editingBookingId === booking.id) {
                               setEditingBookingId('')
@@ -597,9 +597,9 @@ function AdminBookingsPage() {
                     <section className="admin-booking-modal" role="dialog" aria-modal="true"
                       aria-labelledby="booking-edit-title">
                     <div className="admin-booking-modal-heading">
-                      <div><span className="admin-eyebrow">إدارة الحجز</span>
-                        <h2 id="booking-edit-title">تعديل تفاصيل الموعد</h2></div>
-                      <button type="button" className="admin-icon-button" aria-label="إغلاق"
+                      <div><span className="admin-eyebrow">{t('إدارة الحجز')}</span>
+                        <h2 id="booking-edit-title">{t('تعديل تفاصيل الموعد')}</h2></div>
+                      <button type="button" className="admin-icon-button" aria-label={t('إغلاق')}
                         onClick={() => setEditingBookingId('')}><X size={17} /></button>
                     </div>
                   <form className="admin-booking-edit" onSubmit={(event) => void saveSchedule(event, booking)}>
@@ -607,7 +607,7 @@ function AdminBookingsPage() {
                       || booking.bookingMode === 'LEGACY') && (
                         <>
                           <label>{booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
-                            ? 'التاريخ المفضّل' : 'تاريخ الموعد'}
+                            ? t('التاريخ المفضّل') : t('تاريخ الموعد')}
                             <input type="date" min={getShopDate()} value={appointmentDate}
                               onChange={(event) => {
                                 setAppointmentDate(event.target.value)
@@ -618,44 +618,44 @@ function AdminBookingsPage() {
                               onClick={(event) => event.currentTarget.showPicker?.()} required />
                           </label>
                           <label>{booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
-                            ? 'الوقت المفضّل (اختياري)' : 'الموعد'}
+                            ? t('الوقت المفضّل (اختياري)') : t('الموعد')}
                             <select name="startsAt" value={selectedAppointmentSlot}
                               onChange={(event) => setSelectedAppointmentSlot(event.target.value)}
                               required={booking.bookingMode !== 'CONFIRMATION_REQUEST' || booking.status === 'CONFIRMED'}>
                               {booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
-                                && <option value="">بدون وقت مقترح</option>}
+                                && <option value="">{t('بدون وقت مقترح')}</option>}
                               {appointmentSlots?.slots.map((slot) => (
                                 <option key={slot.startsAt} value={slot.startsAt}>{slot.localTime}</option>
                               ))}
                             </select>
                           </label>
-                          {loadingAppointmentSlots && <p className="admin-form-note">جارٍ تحميل الأوقات المتاحة...</p>}
+                          {loadingAppointmentSlots && <p className="admin-form-note">{t('جارٍ تحميل الأوقات المتاحة...')}</p>}
                           {!loadingAppointmentSlots && appointmentSlots && !appointmentSlots.open
-                            && <p className="admin-form-note">المحل مغلق في هذا التاريخ؛ اختر تاريخاً آخر أو اترك الوقت المفضّل فارغاً.</p>}
+                            && <p className="admin-form-note">{t('المحل مغلق في هذا التاريخ؛ اختر تاريخاً آخر أو اترك الوقت المفضّل فارغاً.')}</p>}
                           {!loadingAppointmentSlots && appointmentSlots?.open
                             && appointmentSlots.slots.length === 0
-                            && <p className="admin-form-note">لا توجد أوقات متاحة في هذا اليوم.</p>}
+                            && <p className="admin-form-note">{t('لا توجد أوقات متاحة في هذا اليوم.')}</p>}
                         </>
                       )}
                     {booking.bookingMode === 'DAY_QUEUE' && (
-                      <label>تاريخ الدور
+                      <label>{t('تاريخ الدور')}
                         <input name="queueDate" type="date" min={getShopDate()} defaultValue={booking.queueDate ?? ''}
                           onClick={(event) => event.currentTarget.showPicker?.()} required />
                       </label>
                     )}
                     {booking.bookingMode === 'SAME_DAY_QUEUE' && (
-                      <p className="admin-form-note">هذا حجز لقائمة اليوم؛ يمكن تعديل الملاحظات فقط.</p>
+                      <p className="admin-form-note">{t('هذا حجز لقائمة اليوم؛ يمكن تعديل الملاحظات فقط.')}</p>
                     )}
                     {booking.notes && <p className="admin-form-note admin-booking-customer-note">
-                      <strong>ملاحظة الزبون:</strong> {booking.notes}
+                      <strong>{t('ملاحظة الزبون:')}</strong> {booking.notes}
                     </p>}
-                    <label className="admin-booking-notes">ملاحظة من المحل (تظهر للزبون)
+                    <label className="admin-booking-notes">{t('ملاحظة من المحل (تظهر للزبون)')}
                       <input name="ownerNote" maxLength={1000} defaultValue={booking.ownerNote ?? ''} />
                     </label>
                     <div className="admin-inline-actions">
-                      <button className="admin-primary-button" disabled={busyBookingId === booking.id}>حفظ التعديل</button>
+                      <button className="admin-primary-button" disabled={busyBookingId === booking.id}>{t('حفظ التعديل')}</button>
                       <button className="admin-secondary-button" type="button"
-                        onClick={() => setEditingBookingId('')}>إلغاء</button>
+                        onClick={() => setEditingBookingId('')}>{t('إلغاء')}</button>
                     </div>
                   </form>
                     </section>
@@ -670,17 +670,17 @@ function AdminBookingsPage() {
                     <section className="admin-booking-modal" role="dialog" aria-modal="true"
                       aria-labelledby="booking-confirm-title">
                     <div className="admin-booking-modal-heading">
-                      <div><span className="admin-eyebrow">{booking.customerName || 'العميل'} · {booking.serviceName}</span>
-                        <h2 id="booking-confirm-title">اختيار موعد وتأكيد الحجز</h2></div>
-                      <button type="button" className="admin-icon-button" aria-label="إغلاق"
+                      <div><span className="admin-eyebrow">{booking.customerName || t('العميل')} · {booking.serviceName}</span>
+                        <h2 id="booking-confirm-title">{t('اختيار موعد وتأكيد الحجز')}</h2></div>
+                      <button type="button" className="admin-icon-button" aria-label={t('إغلاق')}
                         onClick={() => setConfirmingBookingId('')}><X size={17} /></button>
                     </div>
                   <form className="admin-booking-confirm" onSubmit={(event) => void confirmWithTime(event, booking)}>
                     {booking.preferredDate && <p className="admin-form-note">
-                      التاريخ الذي فضّله العميل: {new Intl.DateTimeFormat('ar', { dateStyle: 'medium' })
+                      {t('التاريخ الذي فضّله العميل')}: {new Intl.DateTimeFormat(language, { dateStyle: 'medium' })
                         .format(new Date(`${booking.preferredDate}T12:00:00`))}
                     </p>}
-                    <label>تاريخ الموعد المعتمد
+                    <label>{t('تاريخ الموعد المعتمد')}
                       <input type="date" min={getShopDate()} value={appointmentDate}
                         onChange={(event) => {
                           setAppointmentDate(event.target.value)
@@ -690,27 +690,27 @@ function AdminBookingsPage() {
                         }}
                         onClick={(event) => event.currentTarget.showPicker?.()} required />
                     </label>
-                    <label>وقت الموعد المعتمد
+                    <label>{t('وقت الموعد المعتمد')}
                       <select name="startsAt" value={selectedAppointmentSlot}
                         onChange={(event) => setSelectedAppointmentSlot(event.target.value)} required>
-                        <option value="" disabled>اختر الوقت</option>
+                        <option value="" disabled>{t('اختر الوقت')}</option>
                         {appointmentSlots?.slots.map((slot) => (
                           <option key={slot.startsAt} value={slot.startsAt}>{slot.localTime}</option>
                         ))}
                       </select>
                     </label>
                     {!loadingAppointmentSlots && appointmentSlots && !appointmentSlots.open
-                      && <p className="admin-form-note">المحل مغلق في هذا التاريخ. اختر يوماً مفتوحاً لتحديد موعد التأكيد.</p>}
+                      && <p className="admin-form-note">{t('المحل مغلق في هذا التاريخ. اختر يوماً مفتوحاً لتحديد موعد التأكيد.')}</p>}
                     {!loadingAppointmentSlots && appointmentSlots?.open && appointmentSlots.slots.length === 0
-                      && <p className="admin-form-note">لا توجد أوقات متاحة في هذا اليوم؛ اختر تاريخاً آخر.</p>}
-                    {loadingAppointmentSlots && <p className="admin-form-note" role="status">جارٍ تحميل الأوقات المتاحة...</p>}
+                      && <p className="admin-form-note">{t('لا توجد أوقات متاحة في هذا اليوم؛ اختر تاريخاً آخر.')}</p>}
+                    {loadingAppointmentSlots && <p className="admin-form-note" role="status">{t('جارٍ تحميل الأوقات المتاحة...')}</p>}
                     <button className="admin-primary-button"
                       disabled={busyBookingId === booking.id || loadingAppointmentSlots
                         || !appointmentSlots?.open || !selectedAppointmentSlot}>
-                      {busyBookingId === booking.id ? 'جارٍ التأكيد...' : 'تأكيد الموعد'}
+                      {busyBookingId === booking.id ? t('جارٍ التأكيد...') : t('تأكيد الموعد')}
                     </button>
                     <button className="admin-secondary-button" type="button"
-                      onClick={() => setConfirmingBookingId('')}>إلغاء</button>
+                      onClick={() => setConfirmingBookingId('')}>{t('إلغاء')}</button>
                   </form>
                     </section>
                   </div>,
@@ -724,34 +724,34 @@ function AdminBookingsPage() {
                     <section className="admin-booking-modal admin-checkout-modal" role="dialog" aria-modal="true"
                       aria-labelledby="booking-checkout-title">
                       <div className="admin-booking-modal-heading">
-                        <div><span className="admin-eyebrow">{booking.customerName || 'العميل'} · {booking.serviceName}</span>
-                          <h2 id="booking-checkout-title">إنهاء الموعد والتحصيل</h2></div>
-                        <button type="button" className="admin-icon-button" aria-label="إغلاق"
+                        <div><span className="admin-eyebrow">{booking.customerName || t('العميل')} · {booking.serviceName}</span>
+                          <h2 id="booking-checkout-title">{t('إنهاء الموعد والتحصيل')}</h2></div>
+                        <button type="button" className="admin-icon-button" aria-label={t('إغلاق')}
                           onClick={() => setCompletingBookingId('')}><X size={17} /></button>
                       </div>
-                      {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
+                      {error && <p className="admin-message admin-message--error" role="alert">{t(error)}</p>}
                       <form className="admin-checkout-form" onSubmit={(event) => void checkoutBooking(event, booking)}>
                         <div className="admin-checkout-summary">
-                          <span>قيمة الخدمة</span><strong>{booking.servicePrice.toLocaleString('ar')} ₪</strong>
-                          <span>إجمالي الفاتورة</span>
-                          <strong>{checkoutTotal(booking.servicePrice, checkoutLines).toLocaleString('ar')} ₪</strong>
+                          <span>{t('قيمة الخدمة')}</span><strong>{booking.servicePrice.toLocaleString(language)} ₪</strong>
+                          <span>{t('إجمالي الفاتورة')}</span>
+                          <strong>{checkoutTotal(booking.servicePrice, checkoutLines).toLocaleString(language)} ₪</strong>
                         </div>
                         <div className="admin-checkout-products">
                           <div className="admin-panel-heading">
-                            <h3>منتجات إضافية</h3>
+                            <h3>{t('منتجات إضافية')}</h3>
                             <button type="button" className="admin-secondary-button"
                               disabled={!productsLoaded || !products.some((product) => product.active)}
                               onClick={() => setCheckoutLines((lines) => [...lines, {
                                 key: Date.now(), productId: '', quantity: '1', unitPrice: '',
-                              }])}><Plus size={15} /> إضافة منتج</button>
+                              }])}><Plus size={15} /> {t('إضافة منتج')}</button>
                           </div>
                           {!productsLoaded
-                            ? <p className="admin-form-note">جارٍ تحميل منتجات المخزون...</p>
+                            ? <p className="admin-form-note">{t('جارٍ تحميل منتجات المخزون...')}</p>
                             : !products.some((product) => product.active)
-                            ? <p className="admin-form-note">أضف المنتجات أولاً من صفحة المخزون لتسجيل بيعها هنا.</p>
+                            ? <p className="admin-form-note">{t('أضف المنتجات أولاً من صفحة المخزون لتسجيل بيعها هنا.')}</p>
                             : checkoutLines.map((line) => (
                               <div className="admin-checkout-product-row" key={line.key}>
-                                <label>المنتج
+                                <label>{t('المنتج')}
                                   <select required value={line.productId}
                                     onChange={(event) => {
                                       const selectedProduct = products.find((product) => product.id === event.target.value)
@@ -764,58 +764,58 @@ function AdminBookingsPage() {
                                           }
                                         : item))
                                     }}>
-                                    <option value="" disabled>اختر منتجاً</option>
+                                    <option value="" disabled>{t('اختر منتجاً')}</option>
                                     {products.filter((product) => product.active).map((product) =>
                                       <option key={product.id} value={product.id}>
-                                        {product.name} · المتوفر {product.quantity.toLocaleString('ar')} {product.unit}
+                                        {product.name} · {t('المتوفر')} {product.quantity.toLocaleString(language)} {product.unit}
                                       </option>)}
                                   </select>
                                 </label>
-                                <label>الكمية
+                                <label>{t('الكمية')}
                                   <input type="number" min="1" step="1"
                                     max={products.find((product) => product.id === line.productId)?.quantity}
                                     required value={line.quantity} disabled={!line.productId}
                                     onChange={(event) => setCheckoutLines((lines) => lines.map((item) =>
                                       item.key === line.key ? { ...item, quantity: event.target.value } : item))} />
                                 </label>
-                                <label>سعر الوحدة (₪)
+                                <label>{t('سعر الوحدة (₪)')}
                                   <input type="number" min="0.01" step="0.01" required
                                     value={line.unitPrice} disabled={!line.productId}
                                     onChange={(event) => setCheckoutLines((lines) => lines.map((item) =>
                                       item.key === line.key ? { ...item, unitPrice: event.target.value } : item))} />
                                 </label>
                                 <button type="button" className="admin-icon-button admin-icon-button--danger"
-                                  aria-label="حذف المنتج من الفاتورة"
+                                  aria-label={t('حذف المنتج من الفاتورة')}
                                   onClick={() => setCheckoutLines((lines) => lines.filter((item) => item.key !== line.key))}>
                                   <Trash2 size={15} />
                                 </button>
                               </div>
                             ))}
                         </div>
-                        <label>المبلغ المقبوض (₪)
+                        <label>{t('المبلغ المقبوض (₪)')}
                           <input type="number" min="0" max={checkoutTotal(booking.servicePrice, checkoutLines)}
                             step="0.01" required value={checkoutAmount || checkoutTotal(booking.servicePrice, checkoutLines).toFixed(2)}
                             onChange={(event) => setCheckoutAmount(event.target.value)} />
                         </label>
-                        <label>طريقة الدفع
+                        <label>{t('طريقة الدفع')}
                           <select value={checkoutMethod} onChange={(event) => setCheckoutMethod(event.target.value)}>
-                            <option value="CASH">نقداً</option>
-                            <option value="CARD">بطاقة</option>
-                            <option value="TRANSFER">تحويل</option>
-                            <option value="OTHER">أخرى</option>
+                            <option value="CASH">{t('نقداً')}</option>
+                            <option value="CARD">{t('بطاقة')}</option>
+                            <option value="TRANSFER">{t('تحويل')}</option>
+                            <option value="OTHER">{t('أخرى')}</option>
                           </select>
                         </label>
-                        <label>ملاحظات
+                        <label>{t('ملاحظات')}
                           <input maxLength={1000} value={checkoutNotes}
                             onChange={(event) => setCheckoutNotes(event.target.value)} />
                         </label>
-                        <p className="admin-form-note">سيُسجل المبلغ غير المقبوض كدين، وتُخصم المنتجات المباعة من المخزون.</p>
+                        <p className="admin-form-note">{t('سيُسجل المبلغ غير المقبوض كدين، وتُخصم المنتجات المباعة من المخزون.')}</p>
                         <div className="admin-inline-actions">
                           <button className="admin-primary-button" disabled={busyBookingId === booking.id}>
-                            {busyBookingId === booking.id ? 'جارٍ حفظ الفاتورة...' : 'إنهاء الحجز وحفظ الفاتورة'}
+                            {busyBookingId === booking.id ? t('جارٍ حفظ الفاتورة...') : t('إنهاء الحجز وحفظ الفاتورة')}
                           </button>
                           <button type="button" className="admin-secondary-button"
-                            onClick={() => setCompletingBookingId('')}>إلغاء</button>
+                            onClick={() => setCompletingBookingId('')}>{t('إلغاء')}</button>
                         </div>
                       </form>
                     </section>
@@ -826,10 +826,10 @@ function AdminBookingsPage() {
               ))}
             </div>
             <div className="admin-pagination">
-              <span>صفحة {(result.page + 1).toLocaleString('ar')} من {Math.max(result.totalPages, 1).toLocaleString('ar')}</span>
-              <div><button type="button" aria-label="الصفحة السابقة" disabled={page === 0}
+              <span>{language === 'ar' ? 'صفحة' : 'Page'} {(result.page + 1).toLocaleString(language)} {t('من')} {Math.max(result.totalPages, 1).toLocaleString(language)}</span>
+              <div><button type="button" aria-label={t('الصفحة السابقة')} disabled={page === 0}
                 onClick={() => { setLoading(true); setPage((current) => Math.max(0, current - 1)) }}><ChevronRight size={18} /></button>
-                <button type="button" aria-label="الصفحة التالية" disabled={page + 1 >= result.totalPages}
+                <button type="button" aria-label={t('الصفحة التالية')} disabled={page + 1 >= result.totalPages}
                   onClick={() => { setLoading(true); setPage((current) => current + 1) }}><ChevronLeft size={18} /></button></div>
             </div>
           </>

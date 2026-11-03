@@ -72,6 +72,17 @@ function validateHours(hours: WeeklySchedule): HoursValidation | null {
   return null
 }
 
+function translateHoursMessage(message: string, t: (value: string) => string) {
+  const separator = message.indexOf(': ')
+  if (separator > 0) {
+    const day = message.slice(0, separator)
+    if (weekdays.some(({ label }) => label === day)) {
+      return `${t(day)}: ${t(message.slice(separator + 2))}`
+    }
+  }
+  return t(message)
+}
+
 const bookingModes: Array<{ key: BookingModeSetting; label: string }> = [
   { key: 'exactAppointmentEnabled', label: 'المواعيد المحددة' },
   { key: 'confirmationRequestEnabled', label: 'طلبات تأكيد الموعد' },
@@ -224,7 +235,7 @@ function AdminSettingsPage() {
                     </label>
                     {day ? (
                       <div className="admin-hours-times">
-                        <label>من<input aria-label={`افتتاح ${label}`} type="time" step={60}
+                        <label>{t('من')}<input aria-label={`${t('افتتاح')} ${t(label)}`} type="time" step={60}
                           value={day.opensAt} aria-invalid={hoursValidation?.day === key}
                           onChange={(event) => {
                             setHours((current) => ({
@@ -233,7 +244,7 @@ function AdminSettingsPage() {
                             }))
                             setHoursValidation(null)
                           }} /></label>
-                        <label>إلى<input aria-label={`إغلاق ${label}`} type="time" step={60}
+                        <label>{t('إلى')}<input aria-label={`${t('إغلاق')} ${t(label)}`} type="time" step={60}
                           value={day.closesAt} aria-invalid={hoursValidation?.day === key}
                           onChange={(event) => {
                             setHours((current) => ({
@@ -245,7 +256,7 @@ function AdminSettingsPage() {
                       </div>
                     ) : <span className="admin-hours-closed">{t('مغلق')}</span>}
                     {hoursValidation?.day === key
-                      && <p className="admin-message admin-message--error" role="alert">{hoursValidation.message}</p>}
+                      && <p className="admin-message admin-message--error" role="alert">{translateHoursMessage(hoursValidation.message, t)}</p>}
                   </div>
                 )
               })}

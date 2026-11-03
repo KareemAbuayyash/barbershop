@@ -3,6 +3,7 @@ import { Bell, BellRing, CheckCheck, RefreshCw } from 'lucide-react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { apiRequest, getErrorMessage } from '../../lib/api'
 import { formatShopDateTime } from '../../lib/shop-time'
+import { translateNotificationMessage, useI18n } from '../../lib/i18n'
 import {
   findGuestBookingToken,
   latestGuestBookingToken,
@@ -41,6 +42,7 @@ function applicationKey(value: string) {
 }
 
 function GuestNotificationPage() {
+  const { t, language } = useI18n()
   const { token: routeToken } = useParams<{ token?: string }>()
   const [searchParams] = useSearchParams()
   const bookingIdFromQuery = searchParams.get('bookingId') ?? ''
@@ -95,17 +97,17 @@ function GuestNotificationPage() {
       }
       if (active) {
         setToken('')
-        setError('رابط متابعة هذا الحجز غير محفوظ على هذا الجهاز. افتح رابط الحجز الأصلي لمتابعته.')
+        setError(t('رابط متابعة هذا الحجز غير محفوظ على هذا الجهاز. افتح رابط الحجز الأصلي لمتابعته.'))
         setLoading(false)
       }
     }
     void resolveToken()
     return () => { active = false }
-  }, [bookingIdFromQuery, routeToken])
+  }, [bookingIdFromQuery, routeToken, t])
 
   const load = useCallback(async () => {
     if (!token) {
-      setError('رابط إشعارات الحجز غير موجود أو انتهت صلاحيته.')
+      setError(t('رابط إشعارات الحجز غير موجود أو انتهت صلاحيته.'))
       setLoading(false)
       return
     }
@@ -114,11 +116,11 @@ function GuestNotificationPage() {
       setCenter(result)
       setError('')
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تحميل إشعارات هذا الحجز.'))
+      setError(t(getErrorMessage(cause, 'تعذر تحميل إشعارات هذا الحجز.')))
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, t])
 
   useEffect(() => {
     if (!token) return
@@ -144,13 +146,13 @@ function GuestNotificationPage() {
         if (active) setPushEnabled(status.enabled)
       })
       .catch((cause: unknown) => {
-        if (active) setError(getErrorMessage(cause, 'تعذر تحميل إشعارات هذا الحجز.'))
+        if (active) setError(t(getErrorMessage(cause, 'تعذر تحميل إشعارات هذا الحجز.')))
       })
       .finally(() => {
         if (active) setLoading(false)
       })
     return () => { active = false }
-  }, [token])
+  }, [token, t])
 
   useEffect(() => {
     const refresh = () => void load()
@@ -179,7 +181,7 @@ function GuestNotificationPage() {
         const permission = Notification.permission === 'granted'
           ? 'granted'
           : await Notification.requestPermission()
-        if (permission !== 'granted') throw new Error('لم يتم السماح بإشعارات هذا الحجز.')
+        if (permission !== 'granted') throw new Error(t('لم يتم السماح بإشعارات هذا الحجز.'))
         if (!subscription) {
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
@@ -187,25 +189,25 @@ function GuestNotificationPage() {
           })
         }
         const keys = subscription.toJSON().keys
-        if (!keys?.p256dh || !keys.auth) throw new Error('بيانات اشتراك الهاتف غير مكتملة.')
+        if (!keys?.p256dh || !keys.auth) throw new Error(t('بيانات اشتراك الهاتف غير مكتملة.'))
         await apiRequest<void>(`/api/guest-notifications/${token}/subscriptions`, {
           method: 'POST',
           body: JSON.stringify({ endpoint: subscription.endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } }),
         })
         window.localStorage.setItem(GUEST_PUSH_OPT_IN, 'true')
         setPushEnabled(true)
-        setNotice('تم تفعيل إشعارات حالة الحجز على هذا الجهاز.')
+        setNotice(t('تم تفعيل إشعارات حالة الحجز على هذا الجهاز.'))
       } else {
-        if (!subscription) throw new Error('اشتراك هذا الجهاز غير موجود.')
+        if (!subscription) throw new Error(t('اشتراك هذا الجهاز غير موجود.'))
         await apiRequest<void>(`/api/guest-notifications/${token}/subscriptions`, {
           method: 'PATCH',
           body: JSON.stringify({ endpoint: subscription.endpoint, enabled: false }),
         })
         setPushEnabled(false)
-        setNotice('تم إيقاف إشعارات حالة هذا الحجز على هذا الجهاز.')
+        setNotice(t('تم إيقاف إشعارات حالة هذا الحجز على هذا الجهاز.'))
       }
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تحديث إشعارات الحجز.'))
+      setError(t(getErrorMessage(cause, 'تعذر تحديث إشعارات الحجز.')))
     } finally {
       setBusy(false)
     }
@@ -230,53 +232,53 @@ function GuestNotificationPage() {
     <section className="notification-center notification-center--guest">
       <header className="notification-center-heading">
         <div>
-          <span className="notification-center-eyebrow">متابعة الحجز</span>
-          <h1>إشعارات حجزك</h1>
-          <p>تابع حالة طلبك من هذا الرابط بدون إنشاء حساب.</p>
+          <span className="notification-center-eyebrow">{t('متابعة الحجز')}</span>
+          <h1>{t('إشعارات حجزك')}</h1>
+          <p>{t('تابع حالة طلبك من هذا الرابط بدون إنشاء حساب.')}</p>
         </div>
         <div className="notification-center-actions">
           {savedBookings.length > 1 && (
             <label className="guest-booking-selector">
-              <span>حجوزاتك</span>
-              <select aria-label="اختر الحجز" value={token} onChange={(event) => {
+              <span>{t('حجوزاتك')}</span>
+              <select aria-label={t('اختر الحجز')} value={token} onChange={(event) => {
                 navigate(`/guest-notifications/${encodeURIComponent(event.target.value)}`)
               }}>
                 {savedBookings.slice().reverse().map((booking, index) => (
                   <option key={booking.token} value={booking.token}>
-                    {booking.bookingId ? `حجز ${booking.bookingId.slice(0, 8)}` : `حجز ${savedBookings.length - index}`}
+                    {booking.bookingId ? `${t('حجز')} ${booking.bookingId.slice(0, 8)}` : `${t('حجز')} ${savedBookings.length - index}`}
                   </option>
                 ))}
               </select>
             </label>
           )}
-          <span className="notification-unread-count">{(center?.unreadCount ?? 0).toLocaleString('ar')} غير مقروء</span>
+          <span className="notification-unread-count">{(center?.unreadCount ?? 0).toLocaleString(language)} {t('غير مقروء')}</span>
           <button type="button" onClick={() => { setLoading(true); void load() }} disabled={loading}>
-            <RefreshCw size={16} /> تحديث
+            <RefreshCw size={16} /> {t('تحديث')}
           </button>
           {!!center?.unreadCount && (
             <button type="button" onClick={() => void markAllRead()}>
-              <CheckCheck size={16} /> تحديد الكل كمقروء
+              <CheckCheck size={16} /> {t('تحديد الكل كمقروء')}
             </button>
           )}
         </div>
       </header>
 
-      {error && <p className="notification-feedback notification-feedback--error" role="alert">{error}</p>}
-      {notice && <p className="notification-feedback" role="status">{notice}</p>}
+      {error && <p className="notification-feedback notification-feedback--error" role="alert">{t(error)}</p>}
+      {notice && <p className="notification-feedback" role="status">{t(notice)}</p>}
 
       <section className="notification-settings notification-settings--compact">
         <div className="notification-settings-title">
           <BellRing size={19} />
-          <div><h2>إشعارات الهاتف</h2><p>فعّلها لتصلك تحديثات الحجز حتى عند إغلاق الموقع.</p></div>
+          <div><h2>{t('إشعارات الهاتف')}</h2><p>{t('فعّلها لتصلك تحديثات الحجز حتى عند إغلاق الموقع.')}</p></div>
         </div>
         <button className="notification-settings-toggle" type="button" onClick={() => void togglePush()} disabled={!pushSupported || busy || !configuration?.enabled}>
-          {busy ? 'جارٍ التحديث...' : pushEnabled ? 'إيقاف على هذا الجهاز' : 'تفعيل إشعارات الحجز'}
+          {busy ? t('جارٍ التحديث...') : pushEnabled ? t('إيقاف على هذا الجهاز') : t('تفعيل إشعارات الحجز')}
         </button>
       </section>
 
-      <section className="notification-feed" aria-label="إشعارات الحجز">
-        <h2>آخر التحديثات</h2>
-        {loading ? <p className="notification-empty" role="status">جارٍ تحميل الإشعارات...</p>
+      <section className="notification-feed" aria-label={t('إشعارات الحجز')}>
+        <h2>{t('آخر التحديثات')}</h2>
+        {loading ? <p className="notification-empty" role="status">{t('جارٍ تحميل الإشعارات...')}</p>
           : center?.content.length ? center.content.map((item) => (
             <button
               type="button"
@@ -285,10 +287,10 @@ function GuestNotificationPage() {
               onClick={() => void markRead(item)}
             >
               <span className="notification-feed-icon"><Bell size={18} /></span>
-              <span className="notification-feed-copy"><strong>{item.title}</strong><span>{item.body}</span><small>{formatShopDateTime(item.createdAt)}</small></span>
-              {!item.readAt && <span className="notification-unread-dot" aria-label="غير مقروء" />}
+              <span className="notification-feed-copy"><strong>{t(item.title)}</strong><span>{translateNotificationMessage(item.body, language, t)}</span><small>{formatShopDateTime(item.createdAt, language)}</small></span>
+              {!item.readAt && <span className="notification-unread-dot" aria-label={t('غير مقروء')} />}
             </button>
-          )) : <p className="notification-empty">لا توجد تحديثات لهذا الحجز حالياً.</p>}
+          )) : <p className="notification-empty">{t('لا توجد تحديثات لهذا الحجز حالياً.')}</p>}
       </section>
     </section>
   )
