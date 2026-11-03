@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -29,18 +30,12 @@ import com.barbershop.backend.admin.AdminDtos.CustomerSummary;
 import com.barbershop.backend.admin.AdminDtos.CustomerUpdateRequest;
 import com.barbershop.backend.admin.AdminDtos.ManualDebtRequest;
 import com.barbershop.backend.admin.AdminDtos.ManualCustomerDebt;
-import com.barbershop.backend.admin.AdminDtos.BookingEmployeeRequest;
 import com.barbershop.backend.admin.AdminDtos.CheckoutRequest;
 import com.barbershop.backend.admin.AdminDtos.DashboardResponse;
 import com.barbershop.backend.admin.AdminDtos.AdminSettingsRequest;
 import com.barbershop.backend.admin.AdminDtos.BestSellingProduct;
 import com.barbershop.backend.admin.AdminDtos.BestSellingService;
 import com.barbershop.backend.admin.AdminDtos.BookingSalesReport;
-import com.barbershop.backend.admin.AdminDtos.Employee;
-import com.barbershop.backend.admin.AdminDtos.EmployeePayment;
-import com.barbershop.backend.admin.AdminDtos.EmployeePaymentResponse;
-import com.barbershop.backend.admin.AdminDtos.EmployeePaymentRecord;
-import com.barbershop.backend.admin.AdminDtos.EmployeeRequest;
 import com.barbershop.backend.admin.AdminDtos.Expense;
 import com.barbershop.backend.admin.AdminDtos.ExpenseRequest;
 import com.barbershop.backend.admin.AdminDtos.InventoryMovement;
@@ -176,14 +171,6 @@ public class AdminManagementController {
 		return service.recordPayment(bookingId, request);
 	}
 
-	@PutMapping("/bookings/{bookingId}/employee")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void assignBookingEmployee(
-			@PathVariable UUID bookingId,
-			@RequestBody BookingEmployeeRequest request) {
-		service.assignBookingEmployee(bookingId, request);
-	}
-
 	@GetMapping("/expenses")
 	public List<Expense> expenses(
 			@RequestParam(required = false) LocalDate fromDate,
@@ -270,6 +257,12 @@ public class AdminManagementController {
 		return service.updateProduct(id, request, image);
 	}
 
+	@DeleteMapping("/inventory/products/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteProduct(@PathVariable UUID id) {
+		service.deleteProduct(id);
+	}
+
 	@GetMapping(value = "/inventory/products/{id}/image")
 	public ResponseEntity<byte[]> productImage(@PathVariable UUID id) {
 		ProductImage image = service.productImage(id);
@@ -283,36 +276,6 @@ public class AdminManagementController {
 	@GetMapping("/inventory/products/{id}/movements")
 	public List<InventoryMovementResponse> inventoryMovements(@PathVariable UUID id) {
 		return service.inventoryMovements(id);
-	}
-
-	@GetMapping("/employees")
-	public List<Employee> employees() {
-		return service.employees();
-	}
-
-	@PostMapping("/employees")
-	@ResponseStatus(HttpStatus.CREATED)
-	public Employee createEmployee(@Valid @RequestBody EmployeeRequest request) {
-		return service.saveEmployee(null, request);
-	}
-
-	@PutMapping("/employees/{id}")
-	public Employee updateEmployee(@PathVariable UUID id, @Valid @RequestBody EmployeeRequest request) {
-		return service.saveEmployee(id, request);
-	}
-
-	@PostMapping("/employees/{id}/payments")
-	@ResponseStatus(HttpStatus.CREATED)
-	public EmployeePaymentResponse employeePayment(
-			@PathVariable UUID id,
-			@Valid @RequestBody EmployeePayment request,
-			Authentication authentication) {
-		return service.recordEmployeePayment(id, request, authentication.getName());
-	}
-
-	@GetMapping("/employee-payments")
-	public List<EmployeePaymentRecord> employeePayments() {
-		return service.employeePayments();
 	}
 
 	@GetMapping("/notifications")

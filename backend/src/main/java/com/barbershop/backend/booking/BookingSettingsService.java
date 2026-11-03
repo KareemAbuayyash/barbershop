@@ -31,7 +31,7 @@ public class BookingSettingsService {
 		settings.setExactAppointmentEnabled(request.exactAppointmentEnabled());
 		settings.setConfirmationRequestEnabled(request.confirmationRequestEnabled());
 		settings.setDayQueueEnabled(request.dayQueueEnabled());
-		settings.setSameDayQueueEnabled(request.sameDayQueueEnabled());
+		settings.setSameDayQueueEnabled(false);
 		settings.setNewBookingsDisabled(request.newBookingsDisabled());
 		BookingSettings updated = bookingSettingsRepository.saveAndFlush(settings);
 		notificationService.notifySettingsChanged();

@@ -411,7 +411,7 @@ public class NotificationService {
 		if (rows.isEmpty()) return;
 		Map<String, Object> product = rows.get(0);
 		notifyOwner("INVENTORY", "inventory-product:" + productId + ":created", "تمت إضافة منتج للمخزون",
-				String.valueOf(product.get("name")) + " · الكمية " + String.valueOf(product.get("quantity")) + " "
+				String.valueOf(product.get("name")) + " · الكمية " + formatQuantity(product.get("quantity")) + " "
 						+ product.get("unit"), "/owner/inventory");
 	}
 
@@ -423,7 +423,7 @@ public class NotificationService {
 		Map<String, Object> product = rows.get(0);
 		notifyOwner("INVENTORY", "inventory-product:" + productId + ":" + action + ":" + Instant.now().toEpochMilli(),
 				"تم تحديث منتج في المخزون",
-				String.valueOf(product.get("name")) + " · الكمية " + product.get("quantity") + " "
+				String.valueOf(product.get("name")) + " · الكمية " + formatQuantity(product.get("quantity")) + " "
 						+ product.get("unit") + " · " + action,
 				"/owner/inventory");
 	}
@@ -439,8 +439,8 @@ public class NotificationService {
 		String eventType = "SALE".equals(movementType) ? "SALES" : "INVENTORY";
 		String title = "SALE".equals(movementType) ? "تم تسجيل عملية بيع" : "تم تحديث كمية المخزون";
 		notifyOwner(eventType, "inventory-movement:" + movementId, title,
-				String.valueOf(movement.get("name")) + " · الكمية " + movement.get("movement_quantity")
-						+ " · المتبقي " + movement.get("quantity") + " " + movement.get("unit"),
+				String.valueOf(movement.get("name")) + " · الكمية " + formatQuantity(movement.get("movement_quantity"))
+						+ " · المتبقي " + formatQuantity(movement.get("quantity")) + " " + movement.get("unit"),
 				"/owner/inventory");
 	}
 
@@ -453,8 +453,13 @@ public class NotificationService {
 		String eventType = outOfStock ? "INVENTORY_OUT" : "INVENTORY_LOW";
 		notifyOwner(eventType, "inventory-threshold:" + productId + ":" + movementId,
 				outOfStock ? "نفد المنتج من المخزون" : "انخفاض مخزون المنتج",
-				String.valueOf(product.get("name")) + " · المتبقي " + product.get("quantity") + " "
+				String.valueOf(product.get("name")) + " · المتبقي " + formatQuantity(product.get("quantity")) + " "
 						+ product.get("unit"), "/owner/inventory");
+	}
+
+	private static String formatQuantity(Object value) {
+		if (value instanceof BigDecimal decimal) return decimal.stripTrailingZeros().toPlainString();
+		return String.valueOf(value);
 	}
 
 	public void notifyServiceChanged(UUID serviceId, String action) {

@@ -12,10 +12,10 @@ export interface Service {
 }
 
 export interface BookingMode {
-  value: 'EXACT_APPOINTMENT' | 'CONFIRMATION_REQUEST' | 'DAY_QUEUE' | 'SAME_DAY_QUEUE'
+  value: 'EXACT_APPOINTMENT' | 'CONFIRMATION_REQUEST' | 'DAY_QUEUE'
   title: string
   description: string
-  icon: 'calendar' | 'barber' | 'queue' | 'today'
+  icon: 'calendar' | 'barber' | 'queue'
 }
 
 export const site = {
@@ -81,11 +81,5 @@ export const bookingModes: BookingMode[] = [
     title: 'حجز دور ليوم محدد',
     description: 'اختر يوماً للانضمام إلى قائمته، ويستطيع الحلاق تنظيم الأدوار يدوياً.',
     icon: 'queue',
-  },
-  {
-    value: 'SAME_DAY_QUEUE',
-    title: 'دور بنفس اليوم',
-    description: 'انضم إلى قائمة الانتظار للزيارات المتاحة في اليوم نفسه.',
-    icon: 'today',
   },
 ]

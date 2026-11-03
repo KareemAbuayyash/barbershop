@@ -415,7 +415,6 @@ public class BookingManagementService {
 				booking.getServiceNameSnapshot(),
 				booking.getServicePriceSnapshot(),
 				booking.getServiceDurationSnapshotMinutes(),
-				booking.getEmployeeId(),
 				booking.getCustomer() == null ? null : booking.getCustomer().getName(),
 				booking.getCustomer() == null ? null : booking.getCustomer().getPhoneNumber(),
 				booking.getCreatedAt(),

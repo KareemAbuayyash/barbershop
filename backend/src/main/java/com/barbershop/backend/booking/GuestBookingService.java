@@ -371,7 +371,7 @@ public class GuestBookingService {
 			case EXACT_APPOINTMENT -> settings.isExactAppointmentEnabled();
 			case CONFIRMATION_REQUEST -> settings.isConfirmationRequestEnabled();
 			case DAY_QUEUE -> settings.isDayQueueEnabled();
-			case SAME_DAY_QUEUE -> settings.isSameDayQueueEnabled();
+			case SAME_DAY_QUEUE -> false;
 			case LEGACY -> false;
 		};
 	}

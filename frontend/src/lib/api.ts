@@ -76,7 +76,6 @@ export interface Booking {
   serviceName: string
   servicePrice: number
   serviceDurationMinutes: number
-  employeeId?: string | null
   customerName: string
   customerPhone: string | null
   createdAt: string

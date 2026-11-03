@@ -2289,8 +2289,7 @@ button {
 }
 
 .admin-panel-heading,
-.admin-inventory-heading,
-.admin-employee-heading {
+.admin-inventory-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2856,8 +2855,7 @@ button {
 }
 
 .admin-booking-row small,
-.admin-customer-identity small,
-.admin-employee-heading small {
+.admin-customer-identity small {
   color: var(--color-muted);
   font-size: 11px;
 }
@@ -3320,8 +3318,7 @@ button {
 }
 
 .admin-service-row,
-.admin-inventory-card,
-.admin-employee-card {
+.admin-inventory-card {
   padding: 14px 0;
   border-bottom: 1px solid rgba(224, 209, 175, 0.09);
 }
@@ -3353,18 +3350,29 @@ button {
   justify-content: initial;
 }
 
-.admin-inventory-heading .admin-stat-icon img {
+.admin-inventory-product-image {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid rgba(195, 166, 107, 0.27);
+  border-radius: 10px;
+  background: rgba(195, 166, 107, 0.09);
+}
+
+.admin-inventory-product-image img {
   display: block;
-  width: 38px;
-  height: 38px;
-  border-radius: 7px;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
 .admin-product-preview {
   display: block;
-  width: min(100%, 240px);
-  max-height: 180px;
+  width: min(100%, 320px);
+  max-height: 240px;
   margin: 16px auto;
   border: 1px solid var(--admin-border);
   border-radius: 9px;
@@ -3399,18 +3407,102 @@ button {
   border-radius: 8px;
 }
 
-.admin-employee-heading {
-  justify-content: initial;
-}
-
-.admin-employee-heading > div {
+.admin-inventory-page {
   display: grid;
-  flex: 1;
-  gap: 4px;
+  gap: 18px;
 }
 
-.admin-employee-card .admin-summary-chips {
-  margin-top: 12px;
+.admin-services-page {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-services-toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.admin-service-modal {
+  width: min(100%, 560px);
+}
+
+.admin-inventory-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.admin-inventory-toolbar h2 {
+  margin: 5px 0 0;
+}
+
+.admin-product-create-modal {
+  width: min(100%, 560px);
+}
+
+.admin-image-picker-control {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+}
+
+.admin-image-picker-control > span {
+  color: #d8d2c5;
+  font-size: 12px;
+}
+
+.admin-image-source-backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.admin-image-source-dialog {
+  display: grid;
+  width: min(100%, 380px);
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: #191915;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.admin-image-source-dialog .admin-booking-modal-heading {
+  align-items: center;
+}
+
+.admin-image-source-dialog h2 {
+  margin: 0;
+  color: #eeeae1;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.admin-inventory-movement-modal {
+  width: min(100%, 720px);
+}
+
+
+.admin-inventory-modal-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.admin-delete-product-button {
+  color: #e39c91;
+}
+
+.admin-delete-product-button:hover {
+  border-color: rgba(227, 156, 145, 0.5);
+  background: rgba(227, 100, 85, 0.09);
 }
 
 .admin-notification-card {

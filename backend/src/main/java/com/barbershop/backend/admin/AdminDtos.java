@@ -226,6 +226,8 @@ public final class AdminDtos {
 			@NotBlank String movementType,
 			@NotNull @DecimalMin(value = "0.001") BigDecimal quantity,
 			@DecimalMin(value = "0.00") BigDecimal unitCost,
+			@DecimalMin(value = "0.00") BigDecimal unitPrice,
+			@DecimalMin(value = "0.00") BigDecimal lineTotal,
 			@Size(max = 1000) String notes) {
 	}
 
@@ -235,64 +237,10 @@ public final class AdminDtos {
 			String movementType,
 			BigDecimal quantity,
 			BigDecimal unitCost,
+			BigDecimal unitPrice,
+			BigDecimal lineTotal,
 			String notes,
 			Instant createdAt) {
-	}
-
-	public record Employee(
-			UUID id,
-			String name,
-			String phoneNumber,
-			String jobTitle,
-			BigDecimal baseSalary,
-			BigDecimal commissionPercent,
-			BigDecimal commissionEarned,
-			BigDecimal commissionPaid,
-			boolean active) {
-	}
-
-	public record EmployeeRequest(
-			@NotBlank @Size(max = 150) String name,
-			@Size(max = 32) String phoneNumber,
-			@NotBlank @Size(max = 100) String jobTitle,
-			@NotNull @DecimalMin(value = "0.00") BigDecimal baseSalary,
-			@NotNull @DecimalMin(value = "0.00") BigDecimal commissionPercent,
-			boolean active) {
-	}
-
-	public record EmployeePayment(
-			@NotNull @DecimalMin(value = "0.01") BigDecimal amount,
-			@NotBlank String paymentType,
-			LocalDate periodStart,
-			LocalDate periodEnd,
-			@Size(max = 1000) String notes) {
-	}
-
-	public record BookingEmployeeRequest(UUID employeeId) {
-	}
-
-	public record EmployeePaymentResponse(
-			UUID id,
-			UUID employeeId,
-			String employeeName,
-			BigDecimal amount,
-			String paymentType,
-			LocalDate periodStart,
-			LocalDate periodEnd,
-			String notes,
-			Instant paidAt) {
-	}
-
-	public record EmployeePaymentRecord(
-			UUID id,
-			UUID employeeId,
-			String employeeName,
-			BigDecimal amount,
-			String paymentType,
-			LocalDate periodStart,
-			LocalDate periodEnd,
-			String notes,
-			Instant paidAt) {
 	}
 
 	public record Notification(String type, String message, long count) {

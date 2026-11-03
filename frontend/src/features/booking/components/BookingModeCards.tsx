@@ -1,4 +1,4 @@
-import { CalendarDays, ListOrdered, Scissors, Sun } from 'lucide-react'
+import { CalendarDays, ListOrdered, Scissors } from 'lucide-react'
 import type { BookingMode as BookingModeOption } from '../../../config/site'
 import type { BookingMode as BookingModeValue } from '../../../lib/api'
 import { bookingModes } from '../../../config/site'
@@ -7,7 +7,6 @@ const icons: Record<BookingModeOption['icon'], typeof CalendarDays> = {
   calendar: CalendarDays,
   barber: Scissors,
   queue: ListOrdered,
-  today: Sun,
 }
 
 interface BookingModeCardsProps {

@@ -4,7 +4,7 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, Pencil, Plus, Search, T
 import { useSearchParams } from 'react-router-dom'
 import { apiRequest, getErrorMessage, type BookingMode, type BookingStatus } from '../../../lib/api'
 import { formatShopDateTime, getShopDate, isoToShopLocalDateTime } from '../../../lib/shop-time'
-import type { AdminEmployee, AdminPage, AdminBooking, AdminProduct } from '../admin-api'
+import type { AdminPage, AdminBooking, AdminProduct } from '../admin-api'
 
 type Preset = 'today' | 'tomorrow' | 'week' | 'month' | 'all' | 'custom'
 type BookingStatusFilter = BookingStatus | '' | 'ACTIVE'
@@ -90,8 +90,9 @@ function checkoutTotal(servicePrice: number, lines: CheckoutLine[]) {
   return Math.round((servicePrice + retailTotal + Number.EPSILON) * 100) / 100
 }
 
-function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
-  const [searchParams] = useSearchParams()
+function AdminBookingsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queueOnly = searchParams.get('view') === 'queue'
   const [preset, setPreset] = useState<Preset>('all')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -105,7 +106,6 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
   const [products, setProducts] = useState<AdminProduct[]>([])
   const [productsLoaded, setProductsLoaded] = useState(false)
   const [busyBookingId, setBusyBookingId] = useState('')
@@ -137,12 +137,6 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
       return left.createdAt.localeCompare(right.createdAt)
     })
   }, [queueOnly, result])
-
-  useEffect(() => {
-    void apiRequest<AdminEmployee[]>('/api/admin/employees')
-      .then(setEmployees)
-      .catch((cause: unknown) => setError(getErrorMessage(cause, 'تعذر تحميل قائمة الموظفين.')))
-  }, [])
 
   useEffect(() => {
     void apiRequest<AdminProduct[]>('/api/admin/inventory/products')
@@ -310,25 +304,6 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     }
   }
 
-  const assignEmployee = async (booking: AdminBooking, employeeId: string) => {
-    setBusyBookingId(booking.id)
-    setError('')
-    setNotice('')
-    try {
-      await apiRequest(`/api/admin/bookings/${booking.id}/employee`, {
-        method: 'PUT',
-        body: JSON.stringify({ employeeId: employeeId || null }),
-      })
-      setNotice('تم تحديث الموظف المسؤول عن الحجز.')
-      setLoading(true)
-      setRefreshKey((value) => value + 1)
-    } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تعيين الموظف.'))
-    } finally {
-      setBusyBookingId('')
-    }
-  }
-
   const saveSchedule = async (event: FormEvent<HTMLFormElement>, booking: AdminBooking) => {
     event.preventDefault()
     const form = event.currentTarget
@@ -413,6 +388,19 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     }
   }
 
+  const chooseBookingView = (nextQueueOnly: boolean) => {
+    setPage(0)
+    setLoading(true)
+    setError('')
+    setStatus('ACTIVE')
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (nextQueueOnly) next.set('view', 'queue')
+      else next.delete('view')
+      return next
+    })
+  }
+
   const changeDate = (setter: (value: string) => void, value: string) => {
     setLoading(true)
     setError('')
@@ -425,8 +413,14 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
       <section className="admin-panel">
         <div className="admin-panel-heading">
           <div><span className="admin-eyebrow">{queueOnly ? 'تنظيم الأدوار' : 'سجل المحل'}</span>
-            <h2>{queueOnly ? 'قائمة الانتظار' : 'جميع الحجوزات'}</h2></div>
+            <h2>{queueOnly ? 'قائمة يومية' : 'جميع الحجوزات'}</h2></div>
           <span className="admin-result-count">{result?.totalElements.toLocaleString('ar') ?? '—'} حجز</span>
+        </div>
+        <div className="admin-filter-pills" role="group" aria-label="عرض الحجوزات">
+          <button type="button" className={!queueOnly ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
+            aria-pressed={!queueOnly} onClick={() => chooseBookingView(false)}>الحجوزات</button>
+          <button type="button" className={queueOnly ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
+            aria-pressed={queueOnly} onClick={() => chooseBookingView(true)}>قائمة يومية</button>
         </div>
         <div className="admin-filter-pills" role="group" aria-label="الفترة الزمنية">
           {presets.map((item) => (
@@ -542,15 +536,6 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                             onClick={() => void moveQueueBooking(booking, 1)}>↓</button>
                         </>
                       )}
-                    {booking.status !== 'CANCELLED' && booking.status !== 'COMPLETED' && (
-                      <select aria-label={`الموظف المسؤول عن ${booking.customerName || 'الحجز'}`}
-                        value={booking.employeeId ?? ''} disabled={busyBookingId === booking.id}
-                        onChange={(event) => void assignEmployee(booking, event.target.value)}>
-                        <option value="">بدون موظف</option>
-                        {employees.filter((employee) => employee.active).map((employee) =>
-                          <option key={employee.id} value={employee.id}>{employee.name}</option>)}
-                      </select>
-                    )}
                     {(booking.status === 'PENDING' || booking.status === 'CONFIRMED')
                       && (booking.bookingMode !== 'LEGACY' || booking.startsAt) && (
                         <button type="button" className="admin-icon-button" aria-label="تعديل الموعد"

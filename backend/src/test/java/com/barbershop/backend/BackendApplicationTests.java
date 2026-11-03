@@ -44,7 +44,7 @@ class BackendApplicationTests {
 	@Test
 	void migrationCreatesTheInitialDatabaseFoundation() {
 		assertThat(flyway.info().current()).isNotNull();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("23");
 
 		Integer createdTables = jdbcTemplate.queryForObject("""
 				SELECT COUNT(*)
@@ -53,11 +53,10 @@ class BackendApplicationTests {
 				  AND table_name IN (
 				        'services', 'customers', 'bookings', 'booking_settings',
 				        'management_accounts', 'customer_accounts', 'booking_payments',
-				        'shop_expenses', 'inventory_products', 'inventory_movements',
-				        'shop_employees', 'employee_commissions', 'employee_payments', 'shop_profile'
+			        'shop_expenses', 'inventory_products', 'inventory_movements', 'shop_profile'
 				  )
 				  """, Integer.class);
-		assertThat(createdTables).isEqualTo(14);
+		assertThat(createdTables).isEqualTo(11);
 
 		Integer settingsCount = jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM booking_settings",
@@ -102,14 +101,6 @@ class BackendApplicationTests {
 				""", Integer.class);
 		assertThat(customerBookingColumn).isEqualTo(1);
 
-		Integer bookingEmployeeColumn = jdbcTemplate.queryForObject("""
-				SELECT COUNT(*)
-				FROM information_schema.columns
-				WHERE table_schema = current_schema()
-				  AND table_name = 'bookings'
-				  AND column_name = 'employee_id'
-				""", Integer.class);
-		assertThat(bookingEmployeeColumn).isEqualTo(1);
 	}
 
 	@Test

@@ -151,38 +151,16 @@ export interface AdminProduct {
   active: boolean
 }
 
-export interface AdminEmployee {
-  id: string
-  name: string
-  phoneNumber: string | null
-  jobTitle: string
-  baseSalary: number
-  commissionPercent: number
-  commissionEarned: number
-  commissionPaid: number
-  active: boolean
-}
-
 export interface AdminInventoryMovement {
   id: string
   productId: string
   movementType: 'PURCHASE' | 'CONSUMPTION' | 'SALE' | 'ADJUSTMENT'
   quantity: number
   unitCost: number | null
+  unitPrice: number | null
+  lineTotal: number | null
   notes: string | null
   createdAt: string
-}
-
-export interface AdminEmployeePayment {
-  id: string
-  employeeId: string
-  employeeName: string
-  amount: number
-  paymentType: string
-  periodStart: string | null
-  periodEnd: string | null
-  notes: string | null
-  paidAt: string
 }
 
 export interface AdminShopProfile {

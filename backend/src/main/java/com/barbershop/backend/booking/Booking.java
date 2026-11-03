@@ -82,9 +82,6 @@ public class Booking {
 	@Column(name = "service_duration_snapshot_minutes", nullable = false)
 	private int serviceDurationSnapshotMinutes;
 
-	@Column(name = "employee_id")
-	private UUID employeeId;
-
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -217,10 +214,6 @@ public class Booking {
 		return serviceDurationSnapshotMinutes;
 	}
 
-	public UUID getEmployeeId() {
-		return employeeId;
-	}
-
 	public Instant getCreatedAt() {
 		return createdAt;
 	}
@@ -257,7 +250,4 @@ public class Booking {
 		this.ownerNote = ownerNote;
 	}
 
-	public void setEmployeeId(UUID employeeId) {
-		this.employeeId = employeeId;
-	}
 }

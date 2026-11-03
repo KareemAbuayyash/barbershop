@@ -13,7 +13,6 @@ import AdminCustomersPage from '../features/owner/pages/AdminCustomersPage'
 import AdminServicesPage from '../features/owner/pages/AdminServicesPage'
 import AdminFinancePage from '../features/owner/pages/AdminFinancePage'
 import AdminInventoryPage from '../features/owner/pages/AdminInventoryPage'
-import AdminEmployeesPage from '../features/owner/pages/AdminEmployeesPage'
 import NotificationCenterPage from '../features/notifications/NotificationCenterPage'
 import CustomerNotificationsPage from '../features/notifications/CustomerNotificationsPage'
 import NotificationSettingsPage from '../features/notifications/NotificationSettingsPage'
@@ -44,7 +43,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <OwnerPage /> },
           { path: 'bookings', element: <AdminBookingsPage /> },
-          { path: 'queue', element: <AdminBookingsPage queueOnly /> },
+          { path: 'queue', element: <Navigate to="/owner/bookings?view=queue" replace /> },
           { path: 'customers', element: <AdminCustomersPage /> },
           { path: 'services', element: <AdminServicesPage /> },
           { path: 'accounts', element: <AdminFinancePage section="accounts" /> },
@@ -53,7 +52,7 @@ export const router = createBrowserRouter([
           { path: 'expenses', element: <AdminFinancePage section="expenses" /> },
           { path: 'reports', element: <AdminFinancePage section="reports" /> },
           { path: 'inventory', element: <AdminInventoryPage /> },
-          { path: 'employees', element: <AdminEmployeesPage /> },
+          { path: 'employees', element: <Navigate to="/owner" replace /> },
           { path: 'notifications', element: <NotificationCenterPage /> },
           { path: 'settings', element: <AdminSettingsPage /> },
           { path: 'settings/notifications', element: <NotificationSettingsPage /> },

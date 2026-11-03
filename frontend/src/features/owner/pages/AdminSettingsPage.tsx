@@ -75,7 +75,6 @@ const bookingModes: Array<{ key: BookingModeSetting; label: string }> = [
   { key: 'exactAppointmentEnabled', label: 'المواعيد المحددة' },
   { key: 'confirmationRequestEnabled', label: 'طلبات تأكيد الموعد' },
   { key: 'dayQueueEnabled', label: 'قائمة انتظار يومية' },
-  { key: 'sameDayQueueEnabled', label: 'الدور في نفس اليوم' },
   { key: 'newBookingsDisabled', label: 'إيقاف الحجوزات الجديدة مؤقتاً' },
 ]
 
@@ -145,12 +144,14 @@ function AdminSettingsPage() {
           openingHours: JSON.stringify(hours),
           ...Object.fromEntries(bookingModes.map(({ key }) =>
             [key, data.get(key) === 'on'])),
+          sameDayQueueEnabled: false,
         }),
       })
       setProfile(updatedProfile)
       setBookingSettings({
         ...bookingSettings,
         ...Object.fromEntries(bookingModes.map(({ key }) => [key, data.get(key) === 'on'])),
+        sameDayQueueEnabled: false,
       })
       setNotice('تم حفظ إعدادات المحل والحجز.')
     } catch (cause) {

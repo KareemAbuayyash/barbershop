@@ -5,7 +5,6 @@ import {
   ChartNoAxesCombined,
   ChevronRight,
   CircleDollarSign,
-  ClipboardList,
   Gauge,
   Menu,
   Package,
@@ -26,7 +25,6 @@ const navigationSections = [
       { label: 'الحجوزات', to: '/owner/bookings', icon: CalendarDays },
       { label: 'العملاء', to: '/owner/customers', icon: Users },
       { label: 'الخدمات', to: '/owner/services', icon: Scissors },
-      { label: 'قائمة الانتظار', to: '/owner/queue', icon: ClipboardList },
     ],
   },
   {
@@ -41,7 +39,6 @@ const navigationSections = [
     title: 'إدارة المحل',
     links: [
       { label: 'المخزون', to: '/owner/inventory', icon: Package },
-      { label: 'الموظفون والرواتب', to: '/owner/employees', icon: Users },
       { label: 'الإشعارات', to: '/owner/notifications', icon: Bell },
       { label: 'إعدادات المحل', to: '/owner/settings', icon: Settings },
     ],
@@ -53,12 +50,10 @@ const pageTitles: Record<string, string> = {
   '/owner/bookings': 'إدارة الحجوزات',
   '/owner/customers': 'العملاء',
   '/owner/services': 'الخدمات',
-  '/owner/queue': 'قائمة الانتظار',
   '/owner/accounts': 'الحسابات والديون',
   '/owner/expenses': 'المصروفات',
   '/owner/reports': 'الأرباح والتقارير',
   '/owner/inventory': 'المخزون',
-  '/owner/employees': 'الموظفون والرواتب',
   '/owner/notifications': 'الإشعارات',
   '/owner/settings': 'إعدادات المحل',
   '/owner/settings/notifications': 'إعدادات الإشعارات',
@@ -77,7 +72,9 @@ function AdminLayout() {
     window.addEventListener('barbershop:close-admin-menu', closeSidebar)
     return () => window.removeEventListener('barbershop:close-admin-menu', closeSidebar)
   }, [])
-  const title = pageTitles[location.pathname] ?? 'إدارة المحل'
+  const title = location.pathname === '/owner/bookings' && location.search.includes('view=queue')
+    ? 'قائمة يومية'
+    : pageTitles[location.pathname] ?? 'إدارة المحل'
 
   return (
     <div className="admin-shell" dir="rtl">

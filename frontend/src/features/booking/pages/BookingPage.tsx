@@ -170,7 +170,6 @@ function BookingPage() {
       || (selectedMode === 'CONFIRMATION_REQUEST' && preferredDateSelected)
     const needsAvailability = usesAppointmentSlots
       || selectedMode === 'DAY_QUEUE'
-      || selectedMode === 'SAME_DAY_QUEUE'
     if (!needsAvailability) {
       setAvailability(null)
       setLoadingAvailability(false)
@@ -178,7 +177,7 @@ function BookingPage() {
     }
 
     let active = true
-    const date = selectedMode === 'SAME_DAY_QUEUE' ? getShopDate() : scheduleDate
+    const date = scheduleDate
     const params = new URLSearchParams({ date })
     if (usesAppointmentSlots && selectedServiceId) params.set('serviceId', selectedServiceId)
     setLoadingAvailability(true)
@@ -196,13 +195,11 @@ function BookingPage() {
         settings.exactAppointmentEnabled && 'EXACT_APPOINTMENT',
         settings.confirmationRequestEnabled && 'CONFIRMATION_REQUEST',
         settings.dayQueueEnabled && 'DAY_QUEUE',
-        settings.sameDayQueueEnabled && 'SAME_DAY_QUEUE',
       ].filter((mode): mode is BookingMode => Boolean(mode))
     : []
   const bookingClosed = settings?.newBookingsDisabled ?? false
   const selectedDateNeedsAvailability = selectedMode === 'EXACT_APPOINTMENT'
     || selectedMode === 'DAY_QUEUE'
-    || selectedMode === 'SAME_DAY_QUEUE'
     || (selectedMode === 'CONFIRMATION_REQUEST' && preferredDateSelected)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -331,7 +328,7 @@ function BookingPage() {
                 setSelectedSlot('')
                 setPreferredDateSelected(false)
                 setLoadingAvailability(
-                  mode === 'DAY_QUEUE' || mode === 'SAME_DAY_QUEUE'
+                  mode === 'DAY_QUEUE'
                     || (mode === 'EXACT_APPOINTMENT' && Boolean(selectedServiceId)),
                 )
                 setError('')
@@ -456,9 +453,6 @@ function BookingPage() {
                       }}
                       onClick={(event) => event.currentTarget.showPicker?.()} required />
                   </>
-                )}
-                {selectedMode === 'SAME_DAY_QUEUE' && (
-                  <p className="field-help">سيُضاف طلبك إلى قائمة انتظار اليوم حسب ترتيب وصوله.</p>
                 )}
                 {loadingAvailability && (selectedMode !== 'CONFIRMATION_REQUEST' || preferredDateSelected)
                   && <p className="field-help" role="status">جارٍ التحقق من ساعات العمل...</p>}

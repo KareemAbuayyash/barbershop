@@ -170,48 +170,6 @@ class AdminManagementApiIntegrationTests {
 	@Transactional
 	@Rollback
 	@WithMockUser(roles = "OWNER")
-	void ownerCanCreateEmployeeAndRecordSalaryPayment() throws Exception {
-		String employeeId = mockMvc.perform(post("/api/admin/employees")
-						.with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-								  "name":"Test barber",
-								  "phoneNumber":null,
-								  "jobTitle":"Barber",
-								  "baseSalary":900,
-								  "commissionPercent":10,
-								  "active":true
-								}
-								"""))
-				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.commissionEarned").value(0))
-				.andReturn()
-				.getResponse()
-				.getContentAsString();
-		employeeId = objectMapper.readTree(employeeId).get("id").asText();
-
-		mockMvc.perform(post("/api/admin/employees/{id}/payments", employeeId)
-						.with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-								  "amount":300,
-								  "paymentType":"SALARY",
-								  "periodStart":"2026-01-01",
-								  "periodEnd":"2026-01-31",
-								  "notes":"January"
-								}
-								"""))
-				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.amount").value(300))
-				.andExpect(jsonPath("$.paymentType").value("SALARY"));
-	}
-
-	@Test
-	@Transactional
-	@Rollback
-	@WithMockUser(roles = "OWNER")
 	void ownerUpdatesShopAndBookingSettingsInOneRequest() throws Exception {
 		mockMvc.perform(put("/api/admin/settings")
 						.with(csrf())
@@ -238,69 +196,4 @@ class AdminManagementApiIntegrationTests {
 				.andExpect(jsonPath("$.newBookingsDisabled").value(false));
 	}
 
-	@Test
-	@Transactional
-	@Rollback
-	@WithMockUser(roles = "OWNER")
-	void employeeAssignmentAccruesCommissionOnCollectionAndCannotChangeAfterPayment() throws Exception {
-		ServiceEntity service = serviceRepository.saveAndFlush(
-				new ServiceEntity("Test service", "Test", new java.math.BigDecimal("30.00"), 30));
-		UUID customerId = UUID.randomUUID();
-		UUID bookingId = UUID.randomUUID();
-		jdbcTemplate.update("INSERT INTO customers (id, name, phone_number) VALUES (?, ?, ?)",
-				customerId, "Test customer", "+970599111111");
-		jdbcTemplate.update("""
-				INSERT INTO bookings (
-				    id, service_id, customer_id, booking_mode, starts_at, status, service_name_snapshot,
-				    service_price_snapshot, service_duration_snapshot_minutes
-				)
-				VALUES (?, ?, ?, 'LEGACY', ?, 'COMPLETED', ?, 30.00, 30)
-				""", bookingId, service.getId(), customerId,
-				java.sql.Timestamp.from(Instant.now().minusSeconds(3600)), service.getName());
-
-		String employeeBody = mockMvc.perform(post("/api/admin/employees")
-						.with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-								  "name":"Commission barber",
-								  "phoneNumber":null,
-								  "jobTitle":"Barber",
-								  "baseSalary":0,
-								  "commissionPercent":10,
-								  "active":true
-								}
-								"""))
-				.andExpect(status().isCreated())
-				.andReturn()
-				.getResponse()
-				.getContentAsString();
-		String employeeId = objectMapper.readTree(employeeBody).get("id").asText();
-
-		mockMvc.perform(put("/api/admin/bookings/{bookingId}/employee", bookingId)
-						.with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{"employeeId":"%s"}
-								""".formatted(employeeId)))
-				.andExpect(status().isNoContent());
-
-		mockMvc.perform(post("/api/admin/bookings/{bookingId}/payments", bookingId)
-						.with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{"amount":30,"method":"CASH","notes":null}
-								"""))
-				.andExpect(status().isCreated());
-
-		mockMvc.perform(get("/api/admin/employees"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].commissionEarned").value(3));
-
-		mockMvc.perform(put("/api/admin/bookings/{bookingId}/employee", bookingId)
-						.with(csrf())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"employeeId\":null}"))
-				.andExpect(status().isConflict());
-	}
 }

@@ -105,8 +105,6 @@ class AuthApiIntegrationTests {
 				.andExpect(status().isOk());
 		mockMvc.perform(get("/api/admin/inventory/products").session(authenticatedSession))
 				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/admin/employees").session(authenticatedSession))
-				.andExpect(status().isOk());
 		mockMvc.perform(get("/api/admin/notifications").session(authenticatedSession))
 				.andExpect(status().isOk());
 		mockMvc.perform(get("/api/admin/settings").session(authenticatedSession))

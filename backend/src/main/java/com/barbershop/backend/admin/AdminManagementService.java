@@ -29,7 +29,6 @@ import com.barbershop.backend.admin.AdminDtos.CustomerPasswordRequest;
 import com.barbershop.backend.admin.AdminDtos.CustomerDetails;
 import com.barbershop.backend.admin.AdminDtos.CustomerSummary;
 import com.barbershop.backend.admin.AdminDtos.CustomerUpdateRequest;
-import com.barbershop.backend.admin.AdminDtos.BookingEmployeeRequest;
 import com.barbershop.backend.admin.AdminDtos.CheckoutProduct;
 import com.barbershop.backend.admin.AdminDtos.CheckoutRequest;
 import com.barbershop.backend.admin.AdminDtos.DashboardResponse;
@@ -38,11 +37,6 @@ import com.barbershop.backend.admin.AdminDtos.AdminSettingsRequest;
 import com.barbershop.backend.admin.AdminDtos.BestSellingProduct;
 import com.barbershop.backend.admin.AdminDtos.BestSellingService;
 import com.barbershop.backend.admin.AdminDtos.BookingSalesReport;
-import com.barbershop.backend.admin.AdminDtos.Employee;
-import com.barbershop.backend.admin.AdminDtos.EmployeePayment;
-import com.barbershop.backend.admin.AdminDtos.EmployeePaymentResponse;
-import com.barbershop.backend.admin.AdminDtos.EmployeePaymentRecord;
-import com.barbershop.backend.admin.AdminDtos.EmployeeRequest;
 import com.barbershop.backend.admin.AdminDtos.Expense;
 import com.barbershop.backend.admin.AdminDtos.ExpenseRequest;
 import com.barbershop.backend.admin.AdminDtos.InventoryMovement;
@@ -69,7 +63,6 @@ public class AdminManagementService {
 	private static final ZoneId SHOP_ZONE = ZoneId.of("Asia/Hebron");
 	private static final List<String> PAYMENT_METHODS = List.of("CASH", "CARD", "TRANSFER", "OTHER");
 	private static final List<String> MOVEMENT_TYPES = List.of("PURCHASE", "CONSUMPTION", "SALE", "ADJUSTMENT");
-	private static final List<String> EMPLOYEE_PAYMENT_TYPES = List.of("SALARY", "COMMISSION", "ADVANCE", "OTHER");
 	private static final String CUSTOMER_GROUPS = """
 			WITH guest_customers AS (
 			    SELECT c.id, c.name, c.phone_number,
@@ -452,7 +445,7 @@ public class AdminManagementService {
 		try {
 			return jdbc.queryForObject("""
 					SELECT b.id AS booking_id, b.status, c.id AS customer_id, c.name AS customer_name,
-					       b.service_price_snapshot AS service_value, b.employee_id,
+					       b.service_price_snapshot AS service_value,
 					       coalesce((SELECT sum(amount) FROM booking_payments WHERE booking_id = b.id), 0) AS paid,
 					       coalesce((SELECT sum(line_total) FROM booking_retail_items WHERE booking_id = b.id), 0) AS retail_total
 					FROM bookings b JOIN customers c ON c.id = b.customer_id
@@ -468,7 +461,6 @@ public class AdminManagementService {
 					throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment exceeds the outstanding booking balance.");
 				}
 				UUID customerId = rs.getObject("customer_id", UUID.class);
-				UUID employeeId = rs.getObject("employee_id", UUID.class);
 				UUID paymentId = UUID.randomUUID();
 				jdbc.update("""
 						INSERT INTO booking_payments (id, booking_id, customer_id, amount, method, notes)
@@ -476,21 +468,6 @@ public class AdminManagementService {
 						""", paymentId, bookingId, customerId, request.amount(), request.method(),
 						trimToNull(request.notes()));
 				notificationService.notifyPaymentRecorded(paymentId, notifyCustomer);
-				BigDecimal serviceBalance = serviceValue.subtract(previouslyPaid).max(BigDecimal.ZERO);
-				BigDecimal commissionableAmount = request.amount().min(serviceBalance);
-				if (employeeId != null && commissionableAmount.signum() > 0) {
-					BigDecimal commissionPercent = scalarMoney(
-							"SELECT coalesce((SELECT commission_percent FROM shop_employees WHERE id = ? AND active = TRUE), 0)",
-							employeeId);
-					if (commissionPercent.signum() > 0) {
-						BigDecimal commission = commissionableAmount.multiply(commissionPercent)
-								.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-						jdbc.update("""
-								INSERT INTO employee_commissions (employee_id, payment_id, amount)
-								VALUES (?, ?, ?)
-								""", employeeId, paymentId, commission);
-					}
-				}
 				return new Payment(paymentId, bookingId, rs.getString("customer_name"), request.amount(),
 						request.method(), trimToNull(request.notes()), Instant.now());
 			}, bookingId);
@@ -617,7 +594,7 @@ public class AdminManagementService {
 		Map<String, Object> booking;
 		try {
 			booking = jdbc.queryForMap("""
-					SELECT b.status, b.service_price_snapshot, b.employee_id, c.id customer_id, b.queue_date
+					SELECT b.status, b.service_price_snapshot, c.id customer_id, b.queue_date
 					FROM bookings b JOIN customers c ON c.id = b.customer_id
 					WHERE b.id = ? FOR UPDATE OF b
 					""", bookingId);
@@ -628,7 +605,6 @@ public class AdminManagementService {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Only confirmed bookings can be checked out.");
 		}
 
-		UUID employeeId = (UUID) booking.get("employee_id");
 		UUID customerId = (UUID) booking.get("customer_id");
 		BigDecimal serviceValue = (BigDecimal) booking.get("service_price_snapshot");
 		BigDecimal alreadyPaid = scalarMoney(
@@ -671,7 +647,7 @@ public class AdminManagementService {
 					SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
 					WHERE id = ? AND quantity >= ?
 					""", item.quantity(), item.productId(), item.quantity());
-			UUID movementId = insertMovement(item.productId(), "SALE", item.quantity(), null,
+			UUID movementId = insertMovement(item.productId(), "SALE", item.quantity(), null, item.unitPrice(), lineTotal,
 					"Sale with booking " + bookingId, actor);
 			notificationService.notifyInventoryMovement(item.productId(), movementId, "SALE");
 			BigDecimal remainingStock = stock.subtract(item.quantity());
@@ -714,47 +690,8 @@ public class AdminManagementService {
 					VALUES (?, ?, ?, ?, ?, ?)
 					""", paymentId, bookingId, customerId, request.amount(), request.method(),
 					trimToNull(request.notes()));
-			if (employeeId != null) {
-				BigDecimal serviceBalance = serviceValue.subtract(alreadyPaid).max(BigDecimal.ZERO);
-				BigDecimal commissionableAmount = request.amount().min(serviceBalance);
-				BigDecimal commissionPercent = scalarMoney(
-						"SELECT coalesce((SELECT commission_percent FROM shop_employees WHERE id = ? AND active = TRUE), 0)",
-						employeeId);
-				if (commissionPercent.signum() > 0 && commissionableAmount.signum() > 0) {
-					BigDecimal commission = commissionableAmount.multiply(commissionPercent)
-							.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-					jdbc.update("""
-							INSERT INTO employee_commissions (employee_id, payment_id, amount)
-							VALUES (?, ?, ?)
-							""", employeeId, paymentId, commission);
-				}
-			}
 		}
 		notificationService.notifyCheckoutCompleted(bookingId);
-	}
-
-	@Transactional
-	public void assignBookingEmployee(UUID bookingId, BookingEmployeeRequest request) {
-		try {
-			String status = jdbc.queryForObject(
-					"SELECT status FROM bookings WHERE id = ? FOR UPDATE", String.class, bookingId);
-			if ("CANCELLED".equals(status)) throw new ResponseStatusException(
-					HttpStatus.CONFLICT, "Cancelled bookings cannot be assigned.");
-			boolean alreadyPaid = scalarLong(
-					"SELECT count(*) FROM booking_payments WHERE booking_id = ?", bookingId) > 0;
-			if (alreadyPaid) throw new ResponseStatusException(
-					HttpStatus.CONFLICT, "Employee assignment cannot change after a payment is recorded.");
-			if (request.employeeId() != null) {
-				int active = jdbc.queryForObject(
-						"SELECT count(*) FROM shop_employees WHERE id = ? AND active = TRUE",
-						Integer.class, request.employeeId());
-				if (active == 0) throw notFound("Active employee not found.");
-			}
-			jdbc.update("UPDATE bookings SET employee_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-					request.employeeId(), bookingId);
-		} catch (EmptyResultDataAccessException exception) {
-			throw notFound("Booking not found.");
-		}
 	}
 
 	@Transactional(readOnly = true)
@@ -1057,7 +994,7 @@ public class AdminManagementService {
 				""", id, request.name().trim(), request.unit().trim(), request.availableQuantity(),
 				request.lowStockThreshold(), purchasePrice, salePrice);
 		if (request.availableQuantity().signum() > 0) {
-			insertMovement(id, "PURCHASE", request.availableQuantity(), purchasePrice, "Initial stock", actor);
+			insertMovement(id, "PURCHASE", request.availableQuantity(), purchasePrice, null, null, "Initial stock", actor);
 		}
 		if (image != null && !image.isEmpty()) saveProductImage(id, image);
 		Product product = findProduct(id);
@@ -1093,7 +1030,10 @@ public class AdminManagementService {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Movement would make inventory stock negative.");
 		}
 		BigDecimal newStock = currentStock.add(delta);
-		UUID movementId = insertMovement(productId, movement.movementType(), movement.quantity(), movement.unitCost(),
+		BigDecimal movementLineTotal = "SALE".equals(movement.movementType()) && movement.unitPrice() != null
+				? movement.quantity().multiply(movement.unitPrice()).setScale(2, RoundingMode.HALF_UP)
+				: null;
+		UUID movementId = insertMovement(productId, movement.movementType(), movement.quantity(), movement.unitCost(), movement.unitPrice(), movementLineTotal,
 				trimToNull(movement.notes()), actor);
 		notificationService.notifyInventoryMovement(productId, movementId, movement.movementType());
 		if (currentStock.compareTo(lowStockThreshold) > 0 && newStock.compareTo(lowStockThreshold) <= 0) {
@@ -1128,6 +1068,23 @@ public class AdminManagementService {
 		return product;
 	}
 
+	@Transactional
+	public void deleteProduct(UUID id) {
+		Map<String, Object> product;
+		try {
+			product = jdbc.queryForMap("SELECT quantity FROM inventory_products WHERE id = ? FOR UPDATE", id);
+		} catch (EmptyResultDataAccessException exception) {
+			throw notFound("Inventory product not found.");
+		}
+		long movements = scalarLong("SELECT count(*) FROM inventory_movements WHERE product_id = ?", id);
+		long soldItems = scalarLong("SELECT count(*) FROM booking_retail_items WHERE product_id = ?", id);
+		if (((BigDecimal) product.get("quantity")).signum() != 0 || movements > 0 || soldItems > 0) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"لا يمكن حذف منتج لديه رصيد أو حركات سابقة. أوقف المنتج من شاشة التعديل.");
+		}
+		jdbc.update("DELETE FROM inventory_products WHERE id = ?", id);
+	}
+
 	@Transactional(readOnly = true)
 	public ProductImage productImage(UUID id) {
 		List<ProductImage> images = jdbc.query("""
@@ -1141,7 +1098,7 @@ public class AdminManagementService {
 	@Transactional(readOnly = true)
 	public List<InventoryMovementResponse> inventoryMovements(UUID productId) {
 		return jdbc.query("""
-				SELECT id, product_id, movement_type, quantity, unit_cost, notes, created_at
+				SELECT id, product_id, movement_type, quantity, unit_cost, unit_price, line_total, notes, created_at
 				FROM inventory_movements WHERE product_id = ? ORDER BY created_at DESC LIMIT 200
 				""", (rs, row) -> new InventoryMovementResponse(
 						rs.getObject("id", UUID.class),
@@ -1149,6 +1106,8 @@ public class AdminManagementService {
 						rs.getString("movement_type"),
 						rs.getBigDecimal("quantity"),
 						rs.getBigDecimal("unit_cost"),
+						rs.getBigDecimal("unit_price"),
+						rs.getBigDecimal("line_total"),
 						rs.getString("notes"),
 						rs.getTimestamp("created_at").toInstant()), productId);
 	}
@@ -1187,120 +1146,12 @@ public class AdminManagementService {
 				       updated_at = CURRENT_TIMESTAMP
 				WHERE singleton_key = TRUE
 				""", request.exactAppointmentEnabled(), request.confirmationRequestEnabled(),
-				request.dayQueueEnabled(), request.sameDayQueueEnabled(), request.newBookingsDisabled());
+				request.dayQueueEnabled(), false, request.newBookingsDisabled());
 		if (updatedSettings == 0) {
 			throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking settings are not initialized.");
 		}
 		notificationService.notifySettingsChanged();
 		return shopProfile();
-	}
-
-	@Transactional(readOnly = true)
-	public List<Employee> employees() {
-		return jdbc.query("""
-				SELECT e.id, e.name, e.phone_number, e.job_title, e.base_salary, e.commission_percent,
-				       coalesce(c.earned, 0) commission_earned, coalesce(p.paid, 0) commission_paid, e.active
-				FROM shop_employees e
-				LEFT JOIN (SELECT employee_id, sum(amount) earned FROM employee_commissions GROUP BY employee_id) c
-				  ON c.employee_id = e.id
-				LEFT JOIN (SELECT employee_id, sum(amount) paid FROM employee_payments
-				           WHERE payment_type = 'COMMISSION' GROUP BY employee_id) p ON p.employee_id = e.id
-				ORDER BY e.active DESC, e.name
-				""", (rs, row) -> new Employee(rs.getObject("id", UUID.class), rs.getString("name"),
-				rs.getString("phone_number"), rs.getString("job_title"), rs.getBigDecimal("base_salary"),
-				rs.getBigDecimal("commission_percent"), rs.getBigDecimal("commission_earned"),
-				rs.getBigDecimal("commission_paid"), rs.getBoolean("active")));
-	}
-
-	@Transactional
-	public Employee saveEmployee(UUID id, EmployeeRequest request) {
-		UUID employeeId = id == null ? UUID.randomUUID() : id;
-		if (id == null) {
-			jdbc.update("""
-					INSERT INTO shop_employees (id, name, phone_number, job_title, base_salary, commission_percent, active)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-					""", employeeId, request.name().trim(), trimToNull(request.phoneNumber()),
-					request.jobTitle().trim(), request.baseSalary(), request.commissionPercent(), request.active());
-		} else {
-			int updated = jdbc.update("""
-					UPDATE shop_employees SET name = ?, phone_number = ?, job_title = ?, base_salary = ?,
-					       commission_percent = ?, active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-					""", request.name().trim(), trimToNull(request.phoneNumber()), request.jobTitle().trim(),
-					request.baseSalary(), request.commissionPercent(), request.active(), employeeId);
-			if (updated == 0) throw notFound("Employee not found.");
-		}
-		Employee employee = jdbc.queryForObject("""
-				SELECT e.id, e.name, e.phone_number, e.job_title, e.base_salary, e.commission_percent,
-				       coalesce(c.earned, 0) commission_earned, coalesce(p.paid, 0) commission_paid, e.active
-				FROM shop_employees e
-				LEFT JOIN (SELECT employee_id, sum(amount) earned FROM employee_commissions GROUP BY employee_id) c
-				  ON c.employee_id = e.id
-				LEFT JOIN (SELECT employee_id, sum(amount) paid FROM employee_payments
-				           WHERE payment_type = 'COMMISSION' GROUP BY employee_id) p ON p.employee_id = e.id
-				WHERE e.id = ?
-				""", (rs, row) -> new Employee(employeeId, rs.getString("name"), rs.getString("phone_number"),
-				rs.getString("job_title"), rs.getBigDecimal("base_salary"), rs.getBigDecimal("commission_percent"),
-				rs.getBigDecimal("commission_earned"), rs.getBigDecimal("commission_paid"), rs.getBoolean("active")), employeeId);
-		return employee;
-	}
-
-	@Transactional(readOnly = true)
-	public List<EmployeePaymentRecord> employeePayments() {
-		return jdbc.query("""
-				SELECT p.id, p.employee_id, e.name employee_name, p.amount, p.payment_type,
-				       p.period_start, p.period_end, p.notes, p.paid_at
-				FROM employee_payments p JOIN shop_employees e ON e.id = p.employee_id
-				ORDER BY p.paid_at DESC LIMIT 500
-				""", (rs, row) -> new EmployeePaymentRecord(
-						rs.getObject("id", UUID.class),
-						rs.getObject("employee_id", UUID.class),
-						rs.getString("employee_name"),
-						rs.getBigDecimal("amount"),
-						rs.getString("payment_type"),
-						rs.getObject("period_start", LocalDate.class),
-						rs.getObject("period_end", LocalDate.class),
-						rs.getString("notes"),
-						rs.getTimestamp("paid_at").toInstant()));
-	}
-
-	@Transactional
-	public EmployeePaymentResponse recordEmployeePayment(UUID employeeId, EmployeePayment request, String actor) {
-		requireChoice(request.paymentType(), EMPLOYEE_PAYMENT_TYPES, "Unsupported employee payment type.");
-		if (request.periodStart() != null && request.periodEnd() != null
-				&& request.periodStart().isAfter(request.periodEnd())) {
-			throw badRequest("Invalid payroll period.");
-		}
-		String employeeName;
-		BigDecimal commissionBalance = BigDecimal.ZERO;
-		try {
-			employeeName = jdbc.queryForObject("SELECT name FROM shop_employees WHERE id = ? FOR UPDATE",
-					String.class, employeeId);
-		} catch (EmptyResultDataAccessException exception) {
-			throw notFound("Employee not found.");
-		}
-		if ("COMMISSION".equals(request.paymentType())) {
-			commissionBalance = scalarMoney("""
-					SELECT coalesce((SELECT sum(amount) FROM employee_commissions WHERE employee_id = ?), 0)
-					       - coalesce((SELECT sum(amount) FROM employee_payments WHERE employee_id = ? AND payment_type = 'COMMISSION'), 0)
-					""", employeeId, employeeId);
-			if (request.amount().compareTo(commissionBalance) > 0) {
-				throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment exceeds accrued commission.");
-			}
-		}
-		UUID id = UUID.randomUUID();
-		jdbc.update("""
-				INSERT INTO employee_payments (id, employee_id, amount, payment_type, period_start, period_end, notes, created_by)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-				""", id, employeeId, request.amount(), request.paymentType(), request.periodStart(),
-				request.periodEnd(), trimToNull(request.notes()), actor);
-		EmployeePaymentResponse response = jdbc.queryForObject("""
-				SELECT paid_at FROM employee_payments WHERE id = ?
-				""", (rs, row) -> new EmployeePaymentResponse(id, employeeId, employeeName, request.amount(),
-				request.paymentType(), request.periodStart(), request.periodEnd(),
-				trimToNull(request.notes()), rs.getTimestamp("paid_at").toInstant()), id);
-		notificationService.notifyOwner("FINANCE", "employee-payment:" + id,
-				"تم تسجيل دفعة لموظف", employeeName + " · " + request.amount() + " ₪", "/owner/employees");
-		return response;
 	}
 
 	public record DebtResponse(
@@ -1379,13 +1230,15 @@ public class AdminManagementService {
 			String type,
 			BigDecimal quantity,
 			BigDecimal unitCost,
+			BigDecimal unitPrice,
+			BigDecimal lineTotal,
 			String notes,
 			String actor) {
 		UUID id = UUID.randomUUID();
 		jdbc.update("""
-				INSERT INTO inventory_movements (id, product_id, movement_type, quantity, unit_cost, notes, created_by)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-				""", id, productId, type, quantity, unitCost, notes, actor);
+				INSERT INTO inventory_movements (id, product_id, movement_type, quantity, unit_cost, unit_price, line_total, notes, created_by)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				""", id, productId, type, quantity, unitCost, unitPrice, lineTotal, notes, actor);
 		return id;
 	}
 
