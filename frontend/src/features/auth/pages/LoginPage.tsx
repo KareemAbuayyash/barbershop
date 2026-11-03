@@ -3,8 +3,10 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import AuthCard from '../components/AuthCard'
 import { useAuth } from '../useAuth'
 import { apiRequest, getErrorMessage } from '../../../lib/api'
+import { useI18n } from '../../../lib/i18n'
 
 function LoginPage() {
+  const { t } = useI18n()
   const { user, isLoading, login } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -82,7 +84,7 @@ function LoginPage() {
   }
 
   if (isLoading) {
-    return <div className="page-content auth-page" role="status">جارٍ التحقق من الجلسة...</div>
+    return <div className="page-content auth-page" role="status">{t('جارٍ التحقق من الجلسة...')}</div>
   }
   if (user?.authorities.includes('ROLE_OWNER')) {
     return <Navigate to="/owner" replace />
@@ -94,12 +96,12 @@ function LoginPage() {
   return (
     <div className="page-content auth-page">
       <AuthCard
-        eyebrow={isRegistering ? 'مساحة العميل' : 'مرحباً بعودتك'}
-        title={isRegistering ? 'إنشاء حساب عميل' : 'تسجيل الدخول'}
+        eyebrow={t(isRegistering ? 'مساحة العميل' : 'مرحباً بعودتك')}
+        title={t(isRegistering ? 'إنشاء حساب عميل' : 'تسجيل الدخول')}
       >
         {isRegistering ? (
           <form className="site-form" onSubmit={(event) => void handleRegistration(event)}>
-            <label htmlFor="register-username">اسم المستخدم</label>
+            <label htmlFor="register-username">{t('اسم المستخدم')}</label>
             <input
               id="register-username"
               name="username"
@@ -108,10 +110,10 @@ function LoginPage() {
               minLength={3}
               maxLength={64}
               pattern="[A-Za-z0-9._-]+"
-              title="استخدم الأحرف الإنجليزية أو الأرقام أو النقطة أو الشرطة السفلية أو الشرطة."
+              title={t('استخدم الأحرف الإنجليزية أو الأرقام أو النقطة أو الشرطة السفلية أو الشرطة.')}
               required
             />
-            <label htmlFor="register-name">الاسم الكامل</label>
+            <label htmlFor="register-name">{t('الاسم الكامل')}</label>
             <input
               id="register-name"
               name="displayName"
@@ -121,7 +123,7 @@ function LoginPage() {
               maxLength={150}
               required
             />
-            <label htmlFor="register-phone">رقم الهاتف</label>
+            <label htmlFor="register-phone">{t('رقم الهاتف')}</label>
             <input
               id="register-phone"
               name="phoneNumber"
@@ -133,7 +135,7 @@ function LoginPage() {
               pattern="[0-9+\s()-]+"
               required
             />
-            <label htmlFor="register-password">كلمة المرور</label>
+            <label htmlFor="register-password">{t('كلمة المرور')}</label>
             <input
               id="register-password"
               name="password"
@@ -152,8 +154,8 @@ function LoginPage() {
               }}
               required
             />
-            <span className="field-help" id="password-help">يجب ألا تقل كلمة المرور عن ٨ أحرف.</span>
-            <label htmlFor="register-confirm-password">تأكيد كلمة المرور</label>
+            <span className="field-help" id="password-help">{t('يجب ألا تقل كلمة المرور عن ٨ أحرف.')}</span>
+            <label htmlFor="register-confirm-password">{t('تأكيد كلمة المرور')}</label>
             <input
               id="register-confirm-password"
               name="confirmPassword"
@@ -172,17 +174,17 @@ function LoginPage() {
               required
             />
             <button className="button button--primary form-submit" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'جارٍ إنشاء الحساب...' : 'إنشاء حساب'}
+              {isSubmitting ? t('جارٍ إنشاء الحساب...') : t('إنشاء حساب')}
             </button>
             {message && <p className="form-message" role="alert">{message}</p>}
             <p className="auth-switch">
-              لديك حساب؟ <button className="text-button" type="button" onClick={toggleForm}>تسجيل الدخول</button>
+              {t('لديك حساب؟')} <button className="text-button" type="button" onClick={toggleForm}>{t('تسجيل الدخول')}</button>
             </p>
           </form>
         ) : (
           <>
             <form className="site-form" onSubmit={handleSubmit}>
-              <label htmlFor="login-username">اسم المستخدم</label>
+              <label htmlFor="login-username">{t('اسم المستخدم')}</label>
               <input
                 id="login-username"
                 name="username"
@@ -191,7 +193,7 @@ function LoginPage() {
                 maxLength={64}
                 required
               />
-              <label htmlFor="login-password">كلمة المرور</label>
+              <label htmlFor="login-password">{t('كلمة المرور')}</label>
               <input
                 id="login-password"
                 name="password"
@@ -201,15 +203,15 @@ function LoginPage() {
               />
               <label className="remember-me-option">
                 <input name="rememberMe" type="checkbox" />
-                تذكرني لمدة 30 يوماً على هذا الجهاز
+                {t('تذكرني لمدة 30 يوماً على هذا الجهاز')}
               </label>
               <button className="button button--primary form-submit" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول'}
+                {isSubmitting ? t('جارٍ تسجيل الدخول...') : t('تسجيل الدخول')}
               </button>
               {message && <p className="form-message" role="alert">{message}</p>}
             </form>
             <p className="auth-switch">
-              ليس لديك حساب؟ <button className="text-button" type="button" onClick={toggleForm}>إنشاء حساب</button>
+              {t('ليس لديك حساب؟')} <button className="text-button" type="button" onClick={toggleForm}>{t('إنشاء حساب')}</button>
             </p>
           </>
         )}

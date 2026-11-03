@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { BarChart3, BellRing, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, CreditCard, Eye, History, Pencil, Plus, Trash2, Wallet, X } from 'lucide-react'
 import { apiRequest, getErrorMessage } from '../../../lib/api'
 import { getShopDate } from '../../../lib/shop-time'
+import { useI18n } from '../../../lib/i18n'
 import type {
   AdminBestSellingProduct,
   AdminBestSellingService,
@@ -91,6 +92,7 @@ function ReportDonut({ values, labels, centerValue, centerLabel, label, valueUni
 }
 
 function AdminFinancePage({ section }: { section: Section }) {
+  const { t, language } = useI18n()
   const [customers, setCustomers] = useState<AdminCustomer[]>([])
   const [selectedCustomerDetails, setSelectedCustomerDetails] = useState<AdminCustomerDetails | null>(null)
   const [addDebtOpen, setAddDebtOpen] = useState(false)
@@ -309,7 +311,7 @@ function AdminFinancePage({ section }: { section: Section }) {
     <div className={`admin-page admin-finance-page${section === 'reports' ? ' admin-finance-page--reports' : ''}`}>
       <section className={`admin-panel${section === 'reports' ? ' admin-finance-main admin-finance-main--reports' : ''}`}>
         <div className={`admin-panel-heading${section === 'reports' ? ' admin-report-page-heading' : ''}`}>
-          <div><span className="admin-eyebrow">{labels[section].eyebrow}</span><h2>{labels[section].title}</h2></div>
+          <div><span className="admin-eyebrow">{t(labels[section].eyebrow)}</span><h2>{t(labels[section].title)}</h2></div>
           {section === 'reports' && <div className="admin-date-range admin-report-period">
             <label>الفترة<input type="month" value={reportMonth}
               onChange={(event) => {
@@ -326,12 +328,12 @@ function AdminFinancePage({ section }: { section: Section }) {
               onChange={(event) => setToDate(event.target.value)} /></label>
           </div>}
         </div>
-        {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
-        {notice && <p className="admin-message" role="status">{notice}</p>}
+        {error && <p className="admin-message admin-message--error" role="alert">{t(error)}</p>}
+        {notice && <p className="admin-message" role="status">{t(notice)}</p>}
         {section === 'accounts' && (
           <label className="admin-search admin-finance-search">
-            <span className="visually-hidden">بحث في الحسابات والديون</span>
-            <input value={query} maxLength={150} placeholder="ابحث باسم العميل أو رقم الهاتف"
+            <span className="visually-hidden">{language === 'ar' ? 'بحث في الحسابات والديون' : 'Search accounts and debts'}</span>
+            <input value={query} maxLength={150} placeholder={t('ابحث باسم العميل أو رقم الهاتف')}
               onChange={(event) => {
                 setError('')
                 setQuery(event.target.value)
@@ -342,7 +344,7 @@ function AdminFinancePage({ section }: { section: Section }) {
         {section === 'accounts' && (
           <>
             <button className="admin-secondary-button admin-add-debt-trigger" type="button"
-              onClick={() => setAddDebtOpen(true)}><Plus size={15} /> إضافة دين يدوي</button>
+              onClick={() => setAddDebtOpen(true)}><Plus size={15} /> {language === 'ar' ? 'إضافة دين يدوي' : 'Add manual debt'}</button>
             <div className="admin-summary-chips">
               <span>{customers.length.toLocaleString('ar')} عميل</span>
               <span>{indebtedCustomers.length.toLocaleString('ar')} عميل عليه دين</span>
@@ -533,7 +535,7 @@ function AdminFinancePage({ section }: { section: Section }) {
             if (event.target === event.currentTarget) setExpenseOpen(false)
           }}>
           <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
-            aria-labelledby="create-expense-title" dir="rtl">
+            aria-labelledby="create-expense-title">
             <div className="admin-panel-heading">
               <div><span className="admin-eyebrow">المصروفات</span>
                 <h2 id="create-expense-title">{editingExpense ? 'تعديل المصروف' : 'تسجيل مصروف'}</h2></div>
@@ -563,7 +565,7 @@ function AdminFinancePage({ section }: { section: Section }) {
             if (event.target === event.currentTarget) setAddDebtOpen(false)
           }}>
           <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
-            aria-labelledby="add-manual-debt-title" dir="rtl">
+            aria-labelledby="add-manual-debt-title">
             <div className="admin-panel-heading">
               <div><span className="admin-eyebrow">الحسابات والديون</span>
                 <h2 id="add-manual-debt-title">إضافة دين يدوي</h2></div>
@@ -589,7 +591,7 @@ function AdminFinancePage({ section }: { section: Section }) {
             if (event.target === event.currentTarget) setSelectedCustomerDetails(null)
           }}>
           <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
-            aria-labelledby="finance-customer-details-title" dir="rtl">
+            aria-labelledby="finance-customer-details-title">
             <div className="admin-panel-heading">
               <div><span className="admin-eyebrow">كشف الحساب</span>
                 <h2 id="finance-customer-details-title">{selectedCustomerDetails.customer.name}</h2></div>

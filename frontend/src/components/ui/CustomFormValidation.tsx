@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useI18n } from '../../lib/i18n'
 
 let nextFieldId = 0
 
@@ -19,6 +20,7 @@ function validationMessage(field: HTMLInputElement | HTMLSelectElement | HTMLTex
   if (validity.rangeOverflow && field instanceof HTMLInputElement) return `يجب أن تكون القيمة ${field.max} أو أقل.`
   if (validity.stepMismatch) return 'أدخل قيمة متوافقة مع الخيارات المتاحة.'
   if (validity.badInput) return 'أدخل قيمة صحيحة.'
+  if (validity.customError) return field.validationMessage
   return 'تحقق من البيانات المدخلة.'
 }
 
@@ -39,7 +41,7 @@ function clearFieldError(field: HTMLInputElement | HTMLSelectElement | HTMLTextA
   else field.removeAttribute('aria-describedby')
 }
 
-function showFieldError(field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement) {
+function showFieldError(field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, translate: (text: string) => string) {
   field.setAttribute('aria-invalid', 'true')
   let fieldId = field.id
   if (!fieldId) {
@@ -62,16 +64,17 @@ function showFieldError(field: HTMLInputElement | HTMLSelectElement | HTMLTextAr
     const describedBy = field.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? []
     if (!describedBy.includes(messageId)) field.setAttribute('aria-describedby', [...describedBy, messageId].join(' '))
   }
-  message.textContent = validationMessage(field)
+  message.textContent = translate(validationMessage(field))
 }
 
 function CustomFormValidation() {
+  const { t } = useI18n()
   useEffect(() => {
     let focusFrame = 0
     const onInvalid = (event: Event) => {
       if (!isValidatableField(event.target)) return
       event.preventDefault()
-      showFieldError(event.target)
+      showFieldError(event.target, t)
       if (!focusFrame) {
         const firstInvalid = event.target
         focusFrame = window.requestAnimationFrame(() => {
@@ -93,7 +96,7 @@ function CustomFormValidation() {
       document.removeEventListener('change', onEdit, true)
       if (focusFrame) window.cancelAnimationFrame(focusFrame)
     }
-  }, [])
+  }, [t])
 
   return null
 }

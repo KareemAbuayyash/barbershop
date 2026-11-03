@@ -5,6 +5,7 @@ import './styles/globals.css'
 import { router } from './app/router'
 import CustomFormValidation from './components/ui/CustomFormValidation'
 import { AuthProvider } from './features/auth/AuthContext'
+import { I18nProvider } from './lib/i18n'
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -15,9 +16,11 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <CustomFormValidation />
-      <RouterProvider router={router} />
-    </AuthProvider>
+    <I18nProvider>
+      <AuthProvider>
+        <CustomFormValidation />
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </I18nProvider>
   </StrictMode>,
 )

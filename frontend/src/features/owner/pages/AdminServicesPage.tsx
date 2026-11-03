@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from '
 import { createPortal } from 'react-dom'
 import { Archive, Plus, Scissors, X } from 'lucide-react'
 import { apiRequest, getErrorMessage, type Service } from '../../../lib/api'
+import { useI18n } from '../../../lib/i18n'
 
 interface ServiceImageCrop {
   centerX: number
@@ -48,6 +49,7 @@ async function prepareServiceImage(image: File, crop: ServiceImageCrop): Promise
 }
 
 function AdminServicesPage() {
+  const { t, language } = useI18n()
   const [services, setServices] = useState<Service[]>([])
   const [editing, setEditing] = useState<Service | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -151,7 +153,7 @@ function AdminServicesPage() {
     try {
       setServices(await apiRequest<Service[]>('/api/services/manage'))
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تحميل الخدمات.'))
+      setError(t(getErrorMessage(cause, 'تعذر تحميل الخدمات.')))
     }
   }
   useEffect(() => {
@@ -159,7 +161,7 @@ function AdminServicesPage() {
     void apiRequest<Service[]>('/api/services/manage')
       .then((data) => { if (active) setServices(data) })
       .catch((cause: unknown) => {
-        if (active) setError(getErrorMessage(cause, 'تعذر تحميل الخدمات.'))
+        if (active) setError(t(getErrorMessage(cause, 'تعذر تحميل الخدمات.')))
       })
     return () => { active = false }
   }, [])
@@ -189,13 +191,13 @@ function AdminServicesPage() {
         upload.append('image', await prepareServiceImage(image, imageCrop))
         await apiRequest<void>(`/api/services/${savedService.id}/image`, { method: 'PUT', body: upload })
       }
-      setNotice(editing ? 'تم تحديث الخدمة.' : 'تمت إضافة الخدمة.')
+        setNotice(t(editing ? 'تم تحديث الخدمة.' : 'تمت إضافة الخدمة.'))
       setEditing(null)
       setModalOpen(false)
       setImagePreview(null)
       await load()
     } catch (cause) {
-      setError(getErrorMessage(cause, cause instanceof Error ? cause.message : 'تعذر حفظ الخدمة.'))
+      setError(t(getErrorMessage(cause, cause instanceof Error ? cause.message : 'تعذر حفظ الخدمة.')))
     } finally {
       setBusy(false)
     }
@@ -211,16 +213,14 @@ function AdminServicesPage() {
       })
       await load()
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تحديث حالة الخدمة.'))
+      setError(t(getErrorMessage(cause, 'تعذر تحديث حالة الخدمة.')))
     } finally {
       setBusy(false)
     }
   }
 
   const archiveAllActive = async () => {
-    if (!activeServices.length || !window.confirm(
-      `سيتم إيقاف ${activeServices.length} خدمة عن الظهور للحجوزات الجديدة. لن تُحذف الحجوزات أو السجلات السابقة، ويمكن إعادة تفعيل الخدمات من الأرشيف. هل تريد المتابعة؟`,
-    )) return
+    if (!activeServices.length || !window.confirm(t('سيتم إيقاف الخدمات النشطة عن الحجوزات الجديدة. يمكن إعادة تفعيلها من الأرشيف. هل تريد المتابعة؟'))) return
 
     setBusy(true)
     setError('')
@@ -229,10 +229,10 @@ function AdminServicesPage() {
       const archivedCount = await apiRequest<number>('/api/services/archive', { method: 'PATCH' })
       setEditing(null)
       setShowArchived(false)
-      setNotice(`تمت أرشفة ${archivedCount.toLocaleString('ar')} خدمة مع الحفاظ على الحجوزات السابقة.`)
+      setNotice(t('تمت أرشفة الخدمات النشطة مع الحفاظ على الحجوزات السابقة.') + ` (${archivedCount.toLocaleString(language === 'ar' ? 'ar-PS' : 'en-US')})`)
       await load()
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر أرشفة الخدمات.'))
+      setError(t(getErrorMessage(cause, 'تعذر أرشفة الخدمات.')))
     } finally {
       setBusy(false)
     }
@@ -248,33 +248,33 @@ function AdminServicesPage() {
           setImageDimensions(null)
           setError('')
           setModalOpen(true)
-        }}><Plus size={16} /> إضافة خدمة</button>
+        }}><Plus size={16} /> {t('إضافة خدمة')}</button>
       </div>
       <section className="admin-panel">
-        <div className="admin-panel-heading"><div><span className="admin-eyebrow">قائمة الأسعار</span><h2>الخدمات</h2></div>
+        <div className="admin-panel-heading"><div><span className="admin-eyebrow">{t('قائمة الأسعار')}</span><h2>{t('الخدمات')}</h2></div>
           <div className="admin-inline-actions">
-            <span className="admin-result-count">{visibleServices.length.toLocaleString('ar')} خدمة</span>
+            <span className="admin-result-count">{visibleServices.length.toLocaleString(language === 'ar' ? 'ar-PS' : 'en-US')} {t('خدمة')}</span>
             <button className="admin-secondary-button" type="button" disabled={busy}
               onClick={() => setShowArchived((value) => !value)}>
-              {showArchived ? 'الخدمات النشطة' : 'عرض الأرشيف'}
+              {showArchived ? t('الخدمات النشطة') : t('عرض الأرشيف')}
             </button>
             {activeServices.length > 0 && <button className="admin-secondary-button" type="button"
               disabled={busy} onClick={() => void archiveAllActive()}>
-              <Archive size={14} /> أرشفة النشطة
+              <Archive size={14} /> {t('أرشفة النشطة')}
             </button>}
           </div>
         </div>
         {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
         {notice && <p className="admin-message" role="status">{notice}</p>}
         {visibleServices.length === 0 ? <div className="admin-empty"><Scissors size={24} />
-          <h3>{showArchived ? 'لا توجد خدمات في الأرشيف' : 'لا توجد خدمات نشطة'}</h3>
-          {!showArchived && <p>أضف خدماتك الجديدة، أو افتح الأرشيف لإعادة تفعيل خدمة سابقة.</p>}
+          <h3>{showArchived ? t('لا توجد خدمات في الأرشيف') : t('لا توجد خدمات نشطة')}</h3>
+          {!showArchived && <p>{t('أضف خدماتك الجديدة، أو افتح الأرشيف لإعادة تفعيل خدمة سابقة.')}</p>}
         </div> : (
           <div className="admin-service-list">
             {visibleServices.map((service) => (
               <article className="admin-service-row" key={service.id}>
                 <div><strong>{service.name}</strong><p>{service.description}</p>
-                  <small>{service.price > 0 ? `${service.price.toLocaleString('ar')} ₪` : 'السعر يحدد في المحل'} · {service.durationMinutes} دقيقة · {service.active ? 'نشطة' : 'متوقفة'}</small></div>
+                  <small>{service.price > 0 ? `${service.price.toLocaleString(language === 'ar' ? 'ar-PS' : 'en-US')} ₪` : t('السعر يحدد في المحل')} · {service.durationMinutes} {t('دقيقة')} · {t(service.active ? 'نشطة' : 'متوقفة')}</small></div>
                 <div className="admin-inline-actions">
                   <button className="admin-secondary-button" type="button" disabled={busy} onClick={() => {
                     setEditing(service)
@@ -283,9 +283,9 @@ function AdminServicesPage() {
                     setImageDimensions(null)
                     setError('')
                     setModalOpen(true)
-                  }}>تعديل</button>
+                  }}>{t('تعديل')}</button>
                   <button className="admin-secondary-button" type="button" disabled={busy}
-                    onClick={() => void toggle(service)}>{service.active ? 'إيقاف' : 'تفعيل'}</button>
+                    onClick={() => void toggle(service)}>{t(service.active ? 'إيقاف' : 'تفعيل')}</button>
                 </div>
               </article>
             ))}
@@ -296,17 +296,17 @@ function AdminServicesPage() {
         <div className="admin-booking-modal-backdrop" role="presentation"
           onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setModalOpen(false) }}>
           <section className="admin-booking-modal admin-service-modal" role="dialog" aria-modal="true"
-            aria-labelledby="service-modal-title" dir="rtl">
+            aria-labelledby="service-modal-title">
             <div className="admin-booking-modal-heading">
-              <div><span className="admin-eyebrow">{editing ? 'تحديث البيانات' : 'خدمة جديدة'}</span>
-                <h2 id="service-modal-title">{editing ? 'تعديل الخدمة' : 'إضافة خدمة'}</h2></div>
-              <button type="button" className="admin-icon-button" aria-label="إغلاق"
+              <div><span className="admin-eyebrow">{t(editing ? 'تحديث البيانات' : 'خدمة جديدة')}</span>
+                <h2 id="service-modal-title">{t(editing ? 'تعديل الخدمة' : 'إضافة خدمة')}</h2></div>
+              <button type="button" className="admin-icon-button" aria-label={t('إغلاق')}
                 onClick={() => { setModalOpen(false); setEditing(null) }} disabled={busy}><X size={17} /></button>
             </div>
             {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
             <form className="admin-form" key={editing?.id ?? 'new'} onSubmit={(event) => void save(event)}>
               <div className="service-image-field">
-                <label htmlFor="service-image-input">صورة الخدمة (اختيارية)</label>
+                <label htmlFor="service-image-input">{t('صورة الخدمة (اختيارية)')}</label>
                 <input id="service-image-input" name="image" type="file" accept="image/*" onChange={(event) => {
                   const file = event.currentTarget.files?.[0]
                   setImageFile(file ?? null)
@@ -329,16 +329,16 @@ function AdminServicesPage() {
                       className={`service-image-crop-handle service-image-crop-handle--${corner}`} data-crop-corner={corner} />)}
                   </div>}
                 </div> : <span className="service-image-current-placeholder"><Scissors size={26} aria-hidden="true" /></span>}
-                {imageFile && <small>اسحب المربع لتحريكه، واسحب إحدى زواياه لتغيير حجمه.</small>}
-                {!imageFile && <small>اختر صورة من الهاتف أو الكمبيوتر لتحديد الجزء المربع الذي سيظهر.</small>}
+                {imageFile && <small>{t('اسحب المربع لتحريكه، واسحب إحدى زواياه لتغيير حجمه.')}</small>}
+                {!imageFile && <small>{t('اختر صورة من الهاتف أو الكمبيوتر لتحديد الجزء المربع الذي سيظهر.')}</small>}
               </div>
-              <label>اسم الخدمة<input name="name" minLength={2} maxLength={150} defaultValue={editing?.name} required /></label>
-              <label>الوصف (اختياري)<textarea name="description" rows={3} maxLength={10000} defaultValue={editing?.description} /></label>
-              <label>السعر (₪) — اختياري<input name="price" type="number" min="0" step="0.01" placeholder="يحدد في المحل" defaultValue={editing?.price || ''} />
-                <small>اتركه فارغًا إذا كان السعر يحدد عند حضور الزبون.</small></label>
-              <label>المدة بالدقائق<input name="durationMinutes" type="number" min="1" step="1" defaultValue={editing?.durationMinutes} required /></label>
+              <label>{t('اسم الخدمة')}<input name="name" minLength={2} maxLength={150} defaultValue={editing?.name} required /></label>
+              <label>{t('الوصف (اختياري)')}<textarea name="description" rows={3} maxLength={10000} defaultValue={editing?.description} /></label>
+              <label>{t('السعر (₪) — اختياري')}<input name="price" type="number" min="0" step="0.01" placeholder={t('يحدد في المحل')} defaultValue={editing?.price || ''} />
+                <small>{t('اتركه فارغًا إذا كان السعر يحدد عند حضور الزبون.')}</small></label>
+              <label>{t('المدة بالدقائق')}<input name="durationMinutes" type="number" min="1" step="1" defaultValue={editing?.durationMinutes} required /></label>
               <button className="admin-primary-button" disabled={busy}>
-                {busy ? 'جارٍ الحفظ...' : editing ? 'حفظ التعديل' : 'إضافة الخدمة'}
+                {busy ? t('جارٍ الحفظ...') : editing ? t('حفظ التعديل') : t('إضافة الخدمة')}
               </button>
             </form>
           </section>

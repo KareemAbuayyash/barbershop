@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import PageIntro from '../../../components/ui/PageIntro'
 import { apiRequest, getErrorMessage, type CustomerBooking } from '../../../lib/api'
 import { formatShopDateTime, getShopDate } from '../../../lib/shop-time'
+import { useI18n } from '../../../lib/i18n'
 
 const bookingModes: Record<CustomerBooking['bookingMode'], string> = {
   EXACT_APPOINTMENT: 'موعد محدد',
@@ -21,6 +22,7 @@ const bookingStatuses: Record<CustomerBooking['status'], string> = {
 }
 
 function MyBookingsPage() {
+  const { t, language } = useI18n()
   const [actionBooking, setActionBooking] = useState<{ booking: CustomerBooking; action: 'cancel' | 'reschedule' } | null>(null)
   const [rescheduleDate, setRescheduleDate] = useState(getShopDate())
   const [rescheduleTime, setRescheduleTime] = useState('')
@@ -52,11 +54,11 @@ function MyBookingsPage() {
       setBookings(result)
       setError('')
     } catch (cause) {
-      setError(getErrorMessage(cause, 'تعذر تحميل حجوزاتك. حاول مرة أخرى.'))
+      setError(t(getErrorMessage(cause, 'تعذر تحميل حجوزاتك. حاول مرة أخرى.')))
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [t])
 
   const runBookingAction = (booking: CustomerBooking, action: 'cancel' | 'reschedule') => {
     setActionBooking({ booking, action })
@@ -77,11 +79,11 @@ function MyBookingsPage() {
         method: 'PATCH',
         ...(isReschedule ? { body: JSON.stringify({ preferredDate: rescheduleDate, startsAt: rescheduleTime || null, reason: rescheduleReason.trim() || null }) } : {}),
       })
-      setNotice(isReschedule ? 'تم إرسال طلب التأجيل للمحل.' : 'تم إلغاء الحجز.')
+      setNotice(t(isReschedule ? 'تم إرسال طلب التأجيل للمحل.' : 'تم إلغاء الحجز.'))
       setActionBooking(null)
       await loadBookings()
     } catch (cause) {
-      setError(getErrorMessage(cause, isReschedule ? 'تعذر إرسال طلب التأجيل.' : 'تعذر إلغاء الحجز.'))
+      setError(t(getErrorMessage(cause, isReschedule ? 'تعذر إرسال طلب التأجيل.' : 'تعذر إلغاء الحجز.')))
     } finally {
       setBusyBookingId('')
     }
@@ -112,18 +114,18 @@ function MyBookingsPage() {
         title="حجوزاتي"
         description="تابع حالة حجوزاتك ومواعيدك في المحل."
       />
-      <section className="container customer-bookings" aria-label="قائمة حجوزاتي">
+      <section className="container customer-bookings" aria-label={t('قائمة حجوزاتي')}>
         {notice && <p className="api-state" role="status">{notice}</p>}
         {isLoading ? (
-          <p className="api-state" role="status">جارٍ تحميل حجوزاتك...</p>
+          <p className="api-state" role="status">{t('جارٍ تحميل حجوزاتك...')}</p>
         ) : error ? (
-          <p className="api-state api-state--error" role="alert">{error}</p>
+          <p className="api-state api-state--error" role="alert">{t(error)}</p>
         ) : bookings.length === 0 ? (
           <div className="empty-state">
             <span className="empty-state-icon" aria-hidden="true"><CalendarDays size={25} /></span>
-            <h2>لا توجد حجوزات بعد</h2>
-            <p>يمكنك إرسال طلب حجز جديد، وستظهر تحديثاته هنا.</p>
-            <Link className="button button--primary" to="/booking">احجز موعدك</Link>
+            <h2>{t('لا توجد حجوزات بعد')}</h2>
+            <p>{t('يمكنك إرسال طلب حجز جديد، وستظهر تحديثاته هنا.')}</p>
+            <Link className="button button--primary" to="/booking">{t('احجز موعدك')}</Link>
           </div>
         ) : (
           <div className="customer-booking-list">
@@ -132,41 +134,41 @@ function MyBookingsPage() {
                 <div className="owner-booking-heading">
                   <div>
                     <h2>{booking.serviceName}</h2>
-                    <p>{booking.servicePrice > 0 ? `${booking.servicePrice} ₪` : 'السعر يحدد في المحل'} · {booking.serviceDurationMinutes} دقيقة</p>
+                    <p>{booking.servicePrice > 0 ? `${booking.servicePrice} ₪` : t('السعر يحدد في المحل')} · {booking.serviceDurationMinutes} {t('دقيقة')}</p>
                   </div>
                   <span className={`booking-status booking-status--${booking.status.toLowerCase()}`}>
-                    {bookingStatuses[booking.status]}
+                    {t(bookingStatuses[booking.status])}
                   </span>
                 </div>
                 <dl className="owner-booking-details">
-                  <div><dt>طريقة الحجز</dt><dd>{bookingModes[booking.bookingMode]}</dd></div>
+                  <div><dt>{t('طريقة الحجز')}</dt><dd>{t(bookingModes[booking.bookingMode])}</dd></div>
                   <div>
-                    <dt>{booking.queueDate ? 'تاريخ الدور' : 'الموعد'}</dt>
+                    <dt>{t(booking.queueDate ? 'تاريخ الدور' : 'الموعد')}</dt>
                     <dd>{booking.queueDate
-                      ? new Intl.DateTimeFormat('ar', { timeZone: 'Asia/Hebron', dateStyle: 'medium' })
+                      ? new Intl.DateTimeFormat(language === 'ar' ? 'ar-PS' : 'en-US', { timeZone: 'Asia/Hebron', dateStyle: 'medium' })
                         .format(new Date(`${booking.queueDate}T12:00:00+02:00`))
                       : booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING' && !booking.startsAt
-                        ? 'بانتظار تحديد موعد جديد من المحل'
-                      : formatShopDateTime(booking.startsAt)}
+                        ? t('بانتظار تحديد موعد جديد من المحل')
+                        : formatShopDateTime(booking.startsAt, language === 'ar' ? 'ar-PS' : 'en-US')}
                     </dd>
                   </div>
-                  {booking.queuePosition && <div><dt>رقم الدور</dt><dd>{booking.queuePosition}</dd></div>}
+                  {booking.queuePosition && <div><dt>{t('رقم الدور')}</dt><dd>{booking.queuePosition}</dd></div>}
                 </dl>
                 {(booking.notes || booking.ownerNote) && (
                   <div className="customer-booking-notes">
-                    {booking.notes && <p><strong>ملاحظتك للمحل:</strong> {booking.notes}</p>}
-                    {booking.ownerNote && <p><strong>ملاحظة من المحل:</strong> {booking.ownerNote}</p>}
+                    {booking.notes && <p><strong>{t('ملاحظتك للمحل:')}</strong> {booking.notes}</p>}
+                    {booking.ownerNote && <p><strong>{t('ملاحظة من المحل:')}</strong> {booking.ownerNote}</p>}
                   </div>
                 )}
                 {(booking.status === 'PENDING' || booking.status === 'CONFIRMED') && (
                   <div className="customer-booking-actions">
                     <button className="button button--secondary" type="button" disabled={busyBookingId === booking.id}
                       onClick={() => void runBookingAction(booking, 'reschedule')}>
-                      <CalendarClock size={16} /> طلب تأجيل
+                      <CalendarClock size={16} /> {t('طلب تأجيل')}
                     </button>
                     <button className="button button--danger-outline" type="button" disabled={busyBookingId === booking.id}
                       onClick={() => void runBookingAction(booking, 'cancel')}>
-                      <X size={16} /> إلغاء الحجز
+                      <X size={16} /> {t('إلغاء الحجز')}
                     </button>
                   </div>
                 )}
@@ -177,31 +179,31 @@ function MyBookingsPage() {
       </section>
       {actionBooking && <div className="customer-action-modal-backdrop" role="presentation"
         onMouseDown={(event) => { if (event.target === event.currentTarget) setActionBooking(null) }}>
-        <section className="customer-action-modal" role="dialog" aria-modal="true" dir="rtl"
+        <section className="customer-action-modal" role="dialog" aria-modal="true"
           aria-labelledby="customer-booking-action-title">
-          <button className="customer-action-modal-close" type="button" aria-label="إغلاق" onClick={() => setActionBooking(null)}><X size={19} /></button>
-          <span className="page-intro-eyebrow">حجوزاتي</span>
-          <h2 id="customer-booking-action-title">{actionBooking.action === 'cancel' ? 'إلغاء الحجز' : 'طلب تأجيل الموعد'}</h2>
+          <button className="customer-action-modal-close" type="button" aria-label={t('إغلاق')} onClick={() => setActionBooking(null)}><X size={19} /></button>
+          <span className="page-intro-eyebrow">{t('حجوزاتي')}</span>
+          <h2 id="customer-booking-action-title">{t(actionBooking.action === 'cancel' ? 'إلغاء الحجز' : 'طلب تأجيل الموعد')}</h2>
           <p>{actionBooking.booking.serviceName}</p>
           {actionBooking.action === 'reschedule' ? <>
-            <label>اليوم الذي يناسبك<input type="date" min={getShopDate()} value={rescheduleDate}
+            <label>{t('اليوم الذي يناسبك')}<input type="date" min={getShopDate()} value={rescheduleDate}
               onChange={(event) => setRescheduleDate(event.target.value)} required /></label>
-            <label>الوقت (اختياري)<select value={rescheduleTime} onChange={(event) => setRescheduleTime(event.target.value)}>
-              <option value="">اختر اليوم فقط — اقترح أول وقت متاح</option>
+            <label>{t('الوقت (اختياري)')}<select value={rescheduleTime} onChange={(event) => setRescheduleTime(event.target.value)}>
+              <option value="">{t('اختر اليوم فقط — اقترح أول وقت متاح')}</option>
               {availableSlots.map((slot) => <option key={slot.startsAt} value={slot.startsAt}>{slot.localTime}</option>)}
             </select></label>
-            {loadingSlots && <small role="status">جارٍ تحميل الأوقات المتاحة...</small>}
-            {!loadingSlots && !availableSlots.length && <small>لا توجد أوقات متاحة لهذا اليوم؛ اختر يوماً آخر.</small>}
-            <label>سبب التأجيل (اختياري)<textarea maxLength={500} rows={3} value={rescheduleReason}
-              onChange={(event) => setRescheduleReason(event.target.value)} placeholder="اكتب سبب التأجيل إن رغبت" /></label>
-          </> : <p>هل تريد إلغاء هذا الحجز؟</p>}
+            {loadingSlots && <small role="status">{t('جارٍ تحميل الأوقات المتاحة...')}</small>}
+            {!loadingSlots && !availableSlots.length && <small>{t('لا توجد أوقات متاحة لهذا اليوم؛ اختر يوماً آخر.')}</small>}
+            <label>{t('سبب التأجيل (اختياري)')}<textarea maxLength={500} rows={3} value={rescheduleReason}
+              onChange={(event) => setRescheduleReason(event.target.value)} placeholder={t('اكتب سبب التأجيل إن رغبت')} /></label>
+          </> : <p>{t('هل تريد إلغاء هذا الحجز؟')}</p>}
           <div className="customer-action-modal-buttons">
-            <button className="button button--secondary" type="button" onClick={() => setActionBooking(null)}>رجوع</button>
+            <button className="button button--secondary" type="button" onClick={() => setActionBooking(null)}>{t('رجوع')}</button>
             <button className={actionBooking.action === 'cancel' ? 'button button--danger-outline' : 'button button--primary'}
               type="button" disabled={busyBookingId === actionBooking.booking.id || loadingSlots
                 || (actionBooking.action === 'reschedule' && (!rescheduleDate || !availableSlots.length))}
               onClick={() => void submitBookingAction()}>
-              {busyBookingId === actionBooking.booking.id ? 'جارٍ الإرسال...' : actionBooking.action === 'cancel' ? 'تأكيد الإلغاء' : 'إرسال طلب التأجيل'}
+              {busyBookingId === actionBooking.booking.id ? t('جارٍ الإرسال...') : actionBooking.action === 'cancel' ? t('تأكيد الإلغاء') : t('إرسال طلب التأجيل')}
             </button>
           </div>
         </section>

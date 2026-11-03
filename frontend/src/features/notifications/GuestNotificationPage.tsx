@@ -227,7 +227,7 @@ function GuestNotificationPage() {
   const savedBookings = readGuestBookingLinks()
 
   return (
-    <section className="notification-center notification-center--guest" dir="rtl">
+    <section className="notification-center notification-center--guest">
       <header className="notification-center-heading">
         <div>
           <span className="notification-center-eyebrow">متابعة الحجز</span>

@@ -2,6 +2,7 @@ import { CalendarDays, ListOrdered, Scissors } from 'lucide-react'
 import type { BookingMode as BookingModeOption } from '../../../config/site'
 import type { BookingMode as BookingModeValue } from '../../../lib/api'
 import { bookingModes } from '../../../config/site'
+import { useI18n } from '../../../lib/i18n'
 
 const icons: Record<BookingModeOption['icon'], typeof CalendarDays> = {
   calendar: CalendarDays,
@@ -16,6 +17,7 @@ interface BookingModeCardsProps {
 }
 
 function BookingModeCards({ enabledModes, selectedMode, onSelect }: BookingModeCardsProps) {
+  const { t } = useI18n()
   const availableModes = bookingModes.filter((mode: BookingModeOption) => enabledModes.includes(mode.value))
 
   return (
@@ -30,8 +32,8 @@ function BookingModeCards({ enabledModes, selectedMode, onSelect }: BookingModeC
               <span className="booking-index">0{index + 1}</span>
               <span className="booking-icon" aria-hidden="true"><Icon size={20} strokeWidth={1.5} /></span>
             </span>
-            <span className="booking-card-title">{mode.title}</span>
-            <span className="booking-card-description">{mode.description}</span>
+            <span className="booking-card-title">{t(mode.title)}</span>
+            <span className="booking-card-description">{t(mode.description)}</span>
             <span className="booking-card-rule" aria-hidden="true" />
           </>
         )
@@ -41,7 +43,7 @@ function BookingModeCards({ enabledModes, selectedMode, onSelect }: BookingModeC
             className={className}
             key={mode.value}
             type="button"
-            aria-label={`${mode.title}: ${mode.description}`}
+            aria-label={`${t(mode.title)}: ${t(mode.description)}`}
             aria-pressed={isSelected}
             onClick={() => onSelect(mode.value)}
           >

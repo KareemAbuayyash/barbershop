@@ -150,7 +150,7 @@ function NotificationCenterPage() {
             if (event.target === event.currentTarget) setSettingsOpen(false)
           }}>
           <section className="notification-settings-modal" role="dialog" aria-modal="true"
-            aria-label="إعدادات الإشعارات" dir="rtl">
+            aria-label="إعدادات الإشعارات">
             <button className="notification-settings-modal-close" type="button" aria-label="إغلاق الإعدادات"
               onClick={() => setSettingsOpen(false)}><X size={19} /></button>
             <NotificationSettingsPage embedded />

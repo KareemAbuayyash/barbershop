@@ -185,7 +185,7 @@ function NotificationSettingsPage({ embedded = false }: { embedded?: boolean }) 
   }
 
   return (
-    <section className={`notification-settings-page${embedded ? ' notification-settings-page--embedded' : ''}`} dir="rtl">
+    <section className={`notification-settings-page${embedded ? ' notification-settings-page--embedded' : ''}`}>
       {!embedded && <header className="notification-settings-heading">
         <div>
           <span>{isOwner ? 'إدارة المحل' : 'إعدادات الحساب'}</span>

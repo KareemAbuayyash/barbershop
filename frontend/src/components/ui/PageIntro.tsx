@@ -1,3 +1,5 @@
+import { useI18n } from '../../lib/i18n'
+
 interface PageIntroProps {
   eyebrow: string
   title: string
@@ -5,11 +7,12 @@ interface PageIntroProps {
 }
 
 function PageIntro({ eyebrow, title, description }: PageIntroProps) {
+  const { t } = useI18n()
   return (
     <div className="page-intro container">
-      <span className="eyebrow">{eyebrow}</span>
-      <h1>{title}</h1>
-      <p>{description}</p>
+      <span className="eyebrow">{t(eyebrow)}</span>
+      <h1>{t(title)}</h1>
+      <p>{t(description)}</p>
     </div>
   )
 }

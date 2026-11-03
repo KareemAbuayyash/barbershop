@@ -4,6 +4,7 @@ import { Bell, CalendarDays, Check, ChevronLeft, ChevronRight, Pencil, Plus, Sea
 import { useSearchParams } from 'react-router-dom'
 import { apiRequest, getErrorMessage, type BookingMode, type BookingStatus } from '../../../lib/api'
 import { formatShopDateTime, getShopDate, isoToShopLocalDateTime } from '../../../lib/shop-time'
+import { useI18n } from '../../../lib/i18n'
 import type { AdminPage, AdminBooking, AdminProduct } from '../admin-api'
 
 type Preset = 'today' | 'tomorrow' | 'week' | 'month' | 'all' | 'custom'
@@ -91,6 +92,7 @@ function checkoutTotal(servicePrice: number, lines: CheckoutLine[]) {
 }
 
 function AdminBookingsPage() {
+  const { t, language } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
   const queueOnly = searchParams.get('view') === 'queue'
   const [preset, setPreset] = useState<Preset>('all')
@@ -427,94 +429,94 @@ function AdminBookingsPage() {
     <div className="admin-page">
       <section className="admin-panel">
         <div className="admin-panel-heading">
-          <div><span className="admin-eyebrow">{queueOnly ? 'تنظيم الأدوار' : 'سجل المحل'}</span>
-            <h2>{queueOnly ? 'قائمة يومية' : 'جميع الحجوزات'}</h2></div>
-          <span className="admin-result-count">{result?.totalElements.toLocaleString('ar') ?? '—'} حجز</span>
+          <div><span className="admin-eyebrow">{t(queueOnly ? 'تنظيم الأدوار' : 'سجل المحل')}</span>
+            <h2>{t(queueOnly ? 'قائمة يومية' : 'جميع الحجوزات')}</h2></div>
+          <span className="admin-result-count">{result?.totalElements.toLocaleString(language) ?? '—'} {t('حجز')}</span>
         </div>
-        <div className="admin-filter-pills" role="group" aria-label="عرض الحجوزات">
+        <div className="admin-filter-pills" role="group" aria-label={t('عرض الحجوزات')}>
           <button type="button" className={!queueOnly ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
-            aria-pressed={!queueOnly} onClick={() => chooseBookingView(false)}>الحجوزات</button>
+            aria-pressed={!queueOnly} onClick={() => chooseBookingView(false)}>{t('الحجوزات')}</button>
           <button type="button" className={queueOnly ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
-            aria-pressed={queueOnly} onClick={() => chooseBookingView(true)}>قائمة يومية</button>
+            aria-pressed={queueOnly} onClick={() => chooseBookingView(true)}>{t('قائمة يومية')}</button>
         </div>
-        <div className="admin-filter-pills" role="group" aria-label="الفترة الزمنية">
+        <div className="admin-filter-pills" role="group" aria-label={language === 'ar' ? 'الفترة الزمنية' : 'Date range'}>
           {presets.map((item) => (
             <button
               type="button"
               key={item.value}
               className={preset === item.value ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
               onClick={() => choosePreset(item.value)}
-            >{item.label}</button>
+            >{t(item.label)}</button>
           ))}
         </div>
         {preset === 'custom' && (
           <div className="admin-date-range">
-            <label>من التاريخ<input type="date" value={fromDate} max={toDate || undefined}
+            <label>{t('من التاريخ')}<input type="date" value={fromDate} max={toDate || undefined}
               onClick={(event) => event.currentTarget.showPicker?.()}
               onChange={(event) => changeDate(setFromDate, event.target.value)} /></label>
-            <label>إلى التاريخ<input type="date" value={toDate} min={fromDate || undefined}
+            <label>{t('إلى التاريخ')}<input type="date" value={toDate} min={fromDate || undefined}
               onClick={(event) => event.currentTarget.showPicker?.()}
               onChange={(event) => changeDate(setToDate, event.target.value)} /></label>
-            <span className="admin-filter-note"><CalendarDays size={15} /> التواريخ حسب توقيت المحل</span>
+            <span className="admin-filter-note"><CalendarDays size={15} /> {t('التواريخ حسب توقيت المحل')}</span>
           </div>
         )}
         <div className="admin-filter-row">
           <label className="admin-search">
             <Search size={17} aria-hidden="true" />
-            <input value={query} maxLength={150} placeholder="ابحث باسم العميل أو رقم الهاتف"
+            <input value={query} maxLength={150} placeholder={t('ابحث باسم العميل أو رقم الهاتف')}
             onChange={(event) => { setLoading(true); setError(''); setQuery(event.target.value); setPage(0) }} />
           </label>
-          <label className="admin-select-field" htmlFor="booking-status">حالة الحجز
+          <label className="admin-select-field" htmlFor="booking-status">{t('حالة الحجز')}
             <select id="booking-status" value={status} onChange={(event) => {
               setLoading(true)
               setError('')
               setStatus(event.target.value as BookingStatusFilter)
               setPage(0)
             }}>
-              {statuses.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+              {statuses.map((item) => <option value={item.value} key={item.value}>{t(item.label)}</option>)}
             </select>
           </label>
         </div>
-        {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
-        {notice && <p className="admin-message" role="status">{notice}</p>}
+        {error && <p className="admin-message admin-message--error" role="alert">{t(error)}</p>}
+        {notice && <p className="admin-message" role="status">{t(notice)}</p>}
         {loading ? (
-          <p className="admin-state" role="status">جارٍ تحميل الحجوزات...</p>
+          <p className="admin-state" role="status">{t('جارٍ تحميل الحجوزات...')}</p>
         ) : !result?.content.length ? (
-          <div className="admin-empty"><CalendarDays size={24} /><h3>لا توجد حجوزات مطابقة</h3>
-            <p>جرّب تغيير الفترة أو إزالة بعض عوامل التصفية.</p></div>
+          <div className="admin-empty"><CalendarDays size={24} /><h3>{t('لا توجد حجوزات مطابقة')}</h3>
+            <p>{language === 'ar' ? 'جرّب تغيير الفترة أو إزالة بعض عوامل التصفية.' : 'Try changing the date range or removing some filters.'}</p></div>
         ) : (
           <>
             <div className="admin-booking-table">
-              <div className="admin-table-head">
-                <span>العميل</span><span>الخدمة</span><span>التاريخ</span><span>الحالة</span><span>القيمة</span><span>الإجراءات</span>
+          <div className="admin-table-head">
+                <span>{language === 'ar' ? 'العميل' : 'Customer'}</span><span>{t('الخدمة')}</span><span>{language === 'ar' ? 'التاريخ' : 'Date'}</span><span>{t('حالة الحجز')}</span><span>{language === 'ar' ? 'القيمة' : 'Amount'}</span><span>{language === 'ar' ? 'الإجراءات' : 'Actions'}</span>
               </div>
                 {displayedBookings.map((booking, index) => (
                 <Fragment key={booking.id}>
                   {!queueOnly && (index === 0 || displayedBookings[index - 1]?.status !== booking.status) && (
-                    <h3 className="admin-booking-group-heading">{statusNames[booking.status]}</h3>
+                    <h3 className="admin-booking-group-heading">{t(statusNames[booking.status])}</h3>
                   )}
                   <div className="admin-booking-entry">
                 <article className="admin-booking-row">
-                  <div data-label="العميل"><strong>{booking.customerName || 'عميل'}</strong>
+                  <div data-label={language === 'ar' ? 'العميل' : 'Customer'}><strong>{booking.customerName || t('عميل')}</strong>
                     <small dir="ltr">{booking.customerPhone || '—'}</small></div>
-                  <div data-label="الخدمة"><strong>{booking.serviceName}</strong><small>{modes[booking.bookingMode]}</small></div>
-                  <div data-label="التاريخ"><strong>{booking.queueDate
-                    ? new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeZone: 'Asia/Hebron' })
+                  <div data-label={t('الخدمة')}><strong>{booking.serviceName}</strong><small>{t(modes[booking.bookingMode])}</small></div>
+                  <div data-label={language === 'ar' ? 'التاريخ' : 'Date'}><strong>{booking.queueDate
+                    ? new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'Asia/Hebron' })
                       .format(new Date(`${booking.queueDate}T12:00:00+02:00`))
                   : booking.startsAt
-                    ? formatShopDateTime(booking.startsAt)
+                    ? formatShopDateTime(booking.startsAt, language)
                     : booking.preferredDate
-                      ? new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeZone: 'Asia/Hebron' })
+                      ? new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'Asia/Hebron' })
                         .format(new Date(`${booking.preferredDate}T12:00:00+02:00`))
-                      : 'لم يُحدد بعد'}</strong>
+                      : (language === 'ar' ? 'لم يُحدد بعد' : 'Not set')}</strong>
                   {booking.bookingMode === 'CONFIRMATION_REQUEST' && booking.status === 'PENDING'
                     && (booking.preferredDate || booking.startsAt)
-                    && <small>{booking.startsAt ? 'الوقت الذي فضّله العميل' : 'التاريخ الذي فضّله العميل'}</small>}
-                    {booking.queuePosition && <small>الدور {booking.queuePosition}</small>}</div>
-                  <span data-label="الحالة" className={`booking-status booking-status--${booking.status.toLowerCase()}`}>
-                    {statusNames[booking.status]}</span>
-                  <strong data-label="القيمة" className="admin-booking-price">{booking.servicePrice.toLocaleString('ar')} ₪</strong>
-                  <div data-label="الإجراءات" className="admin-booking-actions">
+                    && <small>{language === 'ar' ? (booking.startsAt ? 'الوقت الذي فضّله العميل' : 'التاريخ الذي فضّله العميل') : (booking.startsAt ? 'Customer preferred time' : 'Customer preferred date')}</small>}
+                    {booking.queuePosition && <small>{language === 'ar' ? 'الدور' : 'Queue'} {booking.queuePosition.toLocaleString(language)}</small>}</div>
+                  <span data-label={t('حالة الحجز')} className={`booking-status booking-status--${booking.status.toLowerCase()}`}>
+                    {t(statusNames[booking.status])}</span>
+                  <strong data-label={language === 'ar' ? 'القيمة' : 'Amount'} className="admin-booking-price">{booking.servicePrice.toLocaleString(language)} ₪</strong>
+                  <div data-label={language === 'ar' ? 'الإجراءات' : 'Actions'} className="admin-booking-actions">
                     {booking.status === 'PENDING' && <button type="button" className="admin-icon-button"
                       aria-label={booking.bookingMode === 'CONFIRMATION_REQUEST'
                         ? 'تحديد موعد وتأكيد الحجز' : 'تأكيد الحجز'}
@@ -593,7 +595,7 @@ function AdminBookingsPage() {
                       if (event.target === event.currentTarget) setEditingBookingId('')
                     }}>
                     <section className="admin-booking-modal" role="dialog" aria-modal="true"
-                      aria-labelledby="booking-edit-title" dir="rtl">
+                      aria-labelledby="booking-edit-title">
                     <div className="admin-booking-modal-heading">
                       <div><span className="admin-eyebrow">إدارة الحجز</span>
                         <h2 id="booking-edit-title">تعديل تفاصيل الموعد</h2></div>
@@ -666,7 +668,7 @@ function AdminBookingsPage() {
                       if (event.target === event.currentTarget) setConfirmingBookingId('')
                     }}>
                     <section className="admin-booking-modal" role="dialog" aria-modal="true"
-                      aria-labelledby="booking-confirm-title" dir="rtl">
+                      aria-labelledby="booking-confirm-title">
                     <div className="admin-booking-modal-heading">
                       <div><span className="admin-eyebrow">{booking.customerName || 'العميل'} · {booking.serviceName}</span>
                         <h2 id="booking-confirm-title">اختيار موعد وتأكيد الحجز</h2></div>
@@ -720,7 +722,7 @@ function AdminBookingsPage() {
                       if (event.target === event.currentTarget) setCompletingBookingId('')
                     }}>
                     <section className="admin-booking-modal admin-checkout-modal" role="dialog" aria-modal="true"
-                      aria-labelledby="booking-checkout-title" dir="rtl">
+                      aria-labelledby="booking-checkout-title">
                       <div className="admin-booking-modal-heading">
                         <div><span className="admin-eyebrow">{booking.customerName || 'العميل'} · {booking.serviceName}</span>
                           <h2 id="booking-checkout-title">إنهاء الموعد والتحصيل</h2></div>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
+import { useI18n } from '../../../lib/i18n'
 
 const navigationSections = [
   {
@@ -48,6 +49,7 @@ const navigationSections = [
 function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user } = useAuth()
+  const { t } = useI18n()
   const location = useLocation()
   useEffect(() => {
     setSidebarOpen(false)
@@ -59,12 +61,12 @@ function AdminLayout() {
     return () => window.removeEventListener('barbershop:close-admin-menu', closeSidebar)
   }, [])
   return (
-    <div className="admin-shell" dir="rtl">
+    <div className="admin-shell">
       {sidebarOpen && (
         <button
           className="admin-sidebar-scrim"
           type="button"
-          aria-label="إغلاق القائمة الجانبية"
+          aria-label={t('إغلاق القائمة الجانبية')}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -72,12 +74,12 @@ function AdminLayout() {
         <div className="admin-sidebar-top">
           <NavLink className="admin-brand" to="/owner" onClick={() => setSidebarOpen(false)}>
             <span className="admin-brand-mark"><Scissors size={21} /></span>
-            <span><strong>لوحة المالك</strong><small>إدارة المحل</small></span>
+            <span><strong>{t('لوحة المالك')}</strong><small>{t('إدارة المحل')}</small></span>
           </NavLink>
           <button
             type="button"
             className="admin-sidebar-close"
-            aria-label="إغلاق القائمة"
+            aria-label={t('إغلاق القائمة')}
             onClick={(event) => {
               event.preventDefault()
               setSidebarOpen(false)
@@ -87,7 +89,7 @@ function AdminLayout() {
         <nav className="admin-nav">
           {navigationSections.map((section) => (
             <section className="admin-nav-section" key={section.title}>
-              <h2>{section.title}</h2>
+              <h2>{t(section.title)}</h2>
               {section.links.map(({ label, to, icon: Icon, end }) => (
                 <NavLink
                   className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
@@ -97,7 +99,7 @@ function AdminLayout() {
                   onClick={() => setSidebarOpen(false)}
                 >
                   <Icon size={18} strokeWidth={1.8} />
-                  <span>{label}</span>
+                  <span>{t(label)}</span>
                   {to === location.pathname && <ChevronRight className="admin-nav-current" size={15} />}
                 </NavLink>
               ))}
@@ -106,7 +108,7 @@ function AdminLayout() {
         </nav>
         <div className="admin-sidebar-footer">
           <span className="admin-owner-avatar">{user?.username.slice(0, 1).toUpperCase() ?? 'م'}</span>
-          <span><strong>{user?.username ?? 'المالك'}</strong><small>مالك المحل</small></span>
+          <span><strong>{user?.username ?? t('المالك')}</strong><small>{t('مالك المحل')}</small></span>
         </div>
       </aside>
 
@@ -115,7 +117,7 @@ function AdminLayout() {
           <button
             type="button"
             className="admin-menu-toggle"
-            aria-label="فتح القائمة الجانبية"
+            aria-label={t('فتح القائمة الجانبية')}
             aria-expanded={sidebarOpen}
             onClick={() => {
               window.dispatchEvent(new Event('barbershop:close-site-menu'))

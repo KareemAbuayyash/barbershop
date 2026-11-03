@@ -7,6 +7,7 @@ import { useAuth } from '../../auth/useAuth'
 import BookingModeCards from '../components/BookingModeCards'
 import { apiRequest, getErrorMessage, type BookingMode, type BookingSettings, type GuestBookingResult, type Service } from '../../../lib/api'
 import { rememberGuestBookingLink } from '../../notifications/guest-booking-links'
+import { useI18n } from '../../../lib/i18n'
 
 function createIdempotencyKey(): string {
   const cryptoApi = globalThis.crypto
@@ -71,6 +72,7 @@ async function subscribeGuestBooking(token: string) {
 }
 
 function BookingPage() {
+  const { t } = useI18n()
   const { user, isLoading: authLoading } = useAuth()
   const isCustomer = user?.authorities.includes('ROLE_CUSTOMER') ?? false
   const [services, setServices] = useState<Service[]>([])
@@ -336,17 +338,17 @@ function BookingPage() {
         description="اختر طريقة الحجز وأرسل طلبك مباشرة إلى المحل."
       />
       <section className="container page-section booking-choice" aria-labelledby="booking-choice-title">
-        <h2 id="booking-choice-title" className="visually-hidden">اختر طريقة الحجز</h2>
+        <h2 id="booking-choice-title" className="visually-hidden">{t('اختر طريقة الحجز')}</h2>
         {isLoading ? (
-          <p className="api-state" role="status">جارٍ تحميل خيارات الحجز...</p>
+          <p className="api-state" role="status">{t('جارٍ تحميل خيارات الحجز...')}</p>
         ) : error && !settings ? (
           <p className="api-state api-state--error" role="alert">{error}</p>
         ) : bookingClosed ? (
-          <p className="api-state">الحجز الإلكتروني مغلق حالياً. يرجى التواصل مع المحل.</p>
+          <p className="api-state">{t('الحجز الإلكتروني مغلق حالياً. يرجى التواصل مع المحل.')}</p>
         ) : services.length === 0 ? (
-          <p className="api-state">لا توجد خدمات متاحة للحجز حالياً. يرجى التواصل مع المحل.</p>
+          <p className="api-state">{t('لا توجد خدمات متاحة للحجز حالياً. يرجى التواصل مع المحل.')}</p>
         ) : enabledModes.length === 0 ? (
-          <p className="api-state">لم يتم تفعيل طرق الحجز بعد. يرجى التواصل مع المحل.</p>
+          <p className="api-state">{t('لم يتم تفعيل طرق الحجز بعد. يرجى التواصل مع المحل.')}</p>
         ) : (
           <>
             <BookingModeCards
@@ -372,15 +374,15 @@ function BookingPage() {
                   if (event.target === event.currentTarget) setSelectedMode(undefined)
                 }}>
               <section className="booking-modal" role="dialog" aria-modal="true"
-                aria-labelledby="booking-form-title" dir="rtl">
+                aria-labelledby="booking-form-title">
               <div className="booking-modal-heading">
-                <div><span className="booking-modal-eyebrow">تم اختيار طريقة الحجز</span>
-                  <h2 id="booking-form-title">تفاصيل الحجز</h2></div>
-                <button type="button" className="booking-modal-close" aria-label="إغلاق"
+                <div><span className="booking-modal-eyebrow">{t('تم اختيار طريقة الحجز')}</span>
+                  <h2 id="booking-form-title">{t('تفاصيل الحجز')}</h2></div>
+                <button type="button" className="booking-modal-close" aria-label={t('إغلاق')}
                   onClick={() => { setSelectedMode(undefined); setValidationErrors({}) }}><X size={19} /></button>
               </div>
               <form className="booking-form site-form" noValidate onSubmit={(event) => void handleSubmit(event)}>
-                <label htmlFor="booking-service">الخدمة</label>
+                <label htmlFor="booking-service">{t('الخدمة')}</label>
                 <select id="booking-service" name="serviceId" required value={selectedServiceId}
                   aria-invalid={Boolean(validationErrors.serviceId)}
                   aria-describedby={validationErrors.serviceId ? 'booking-service-error' : undefined}
@@ -391,10 +393,10 @@ function BookingPage() {
                     setSelectedSlot('')
                     setLoadingAvailability(true)
                   }}>
-                  <option value="" disabled>اختر الخدمة</option>
+                  <option value="" disabled>{t('اختر الخدمة')}</option>
                   {services.map((service) => (
                     <option key={service.id} value={service.id}>
-                      {service.name} — {service.price > 0 ? `${service.price} ₪` : 'السعر يحدد في المحل'}، {service.durationMinutes} دقيقة
+                      {service.name} — {service.price > 0 ? `${service.price} ₪` : t('السعر يحدد في المحل')}، {service.durationMinutes} {t('دقيقة')}
                     </option>
                   ))}
                 </select>
@@ -403,7 +405,7 @@ function BookingPage() {
 
                 {isCustomer && (
                   <>
-                    {loadingProfile && <p className="field-help" role="status">جارٍ تحميل بيانات حسابك...</p>}
+                    {loadingProfile && <p className="field-help" role="status">{t('جارٍ تحميل بيانات حسابك...')}</p>}
                     {profileError && <p className="form-message" role="alert">{profileError}</p>}
                     <label className="booking-other-person">
                       <input type="checkbox" checked={bookingForSomeoneElse} disabled={loadingProfile}
@@ -418,11 +420,11 @@ function BookingPage() {
                             setCustomerPhone(customerProfile.phoneNumber)
                           }
                         }} />
-                      أحجز لشخص آخر
+                      {t('أحجز لشخص آخر')}
                     </label>
                   </>
                 )}
-                <label htmlFor="booking-customer-name">الاسم</label>
+                <label htmlFor="booking-customer-name">{t('الاسم')}</label>
                 <input id="booking-customer-name" name="customerName" autoComplete="name" maxLength={150}
                   value={customerName} aria-invalid={Boolean(validationErrors.customerName)}
                   aria-describedby={validationErrors.customerName ? 'booking-customer-name-error' : undefined}
@@ -432,13 +434,13 @@ function BookingPage() {
                   }} required />
                 {validationErrors.customerName && <p className="field-validation-error" id="booking-customer-name-error"
                   role="alert">{validationErrors.customerName}</p>}
-                <label htmlFor="booking-customer-phone">رقم الهاتف (اختياري)</label>
+                <label htmlFor="booking-customer-phone">{t('رقم الهاتف (اختياري)')}</label>
                 <input id="booking-customer-phone" name="customerPhone" type="tel" autoComplete="tel" maxLength={32}
                   value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} />
 
                 {selectedMode === 'EXACT_APPOINTMENT' && (
                   <>
-                    <label htmlFor="booking-date">تاريخ الموعد</label>
+                    <label htmlFor="booking-date">{t('تاريخ الموعد')}</label>
                     <input id="booking-date" type="date" min={getShopDate()} value={scheduleDate}
                       aria-invalid={Boolean(validationErrors.scheduleDate)}
                       aria-describedby={validationErrors.scheduleDate ? 'booking-date-error' : undefined}
@@ -452,7 +454,7 @@ function BookingPage() {
                       onClick={(event) => event.currentTarget.showPicker?.()} required />
                     {validationErrors.scheduleDate && <p className="field-validation-error" id="booking-date-error"
                       role="alert">{validationErrors.scheduleDate}</p>}
-                    <label htmlFor="booking-starts-at">الوقت المتاح</label>
+                    <label htmlFor="booking-starts-at">{t('الوقت المتاح')}</label>
                     <select id="booking-starts-at" name="startsAt" value={selectedSlot}
                       aria-invalid={Boolean(validationErrors.startsAt)}
                       aria-describedby={validationErrors.startsAt ? 'booking-time-error' : undefined}
@@ -460,7 +462,7 @@ function BookingPage() {
                         setSelectedSlot(event.target.value)
                         if (event.target.value) setValidationErrors((current) => ({ ...current, startsAt: undefined }))
                       }} required>
-                      <option value="" disabled>اختر موعداً متاحاً</option>
+                      <option value="" disabled>{t('اختر موعداً متاحاً')}</option>
                       {availability?.slots.map((slot) => (
                         <option value={slot.startsAt} key={slot.startsAt}>{slot.localTime}</option>
                       ))}
@@ -471,7 +473,7 @@ function BookingPage() {
                 )}
                 {selectedMode === 'CONFIRMATION_REQUEST' && (
                   <>
-                    <label htmlFor="booking-preferred-date">تاريخ مفضّل (اختياري)</label>
+                    <label htmlFor="booking-preferred-date">{t('تاريخ مفضّل (اختياري)')}</label>
                     <input id="booking-preferred-date" type="date" min={getShopDate()}
                       value={preferredDateSelected ? scheduleDate : ''}
                       onChange={(event) => {
@@ -481,25 +483,25 @@ function BookingPage() {
                         setSelectedSlot('')
                       }}
                       onClick={(event) => event.currentTarget.showPicker?.()} />
-                    <label htmlFor="booking-preferred-time">وقت مفضّل (اختياري)</label>
+                    <label htmlFor="booking-preferred-time">{t('وقت مفضّل (اختياري)')}</label>
                     <select id="booking-preferred-time" name="startsAt" value={selectedSlot}
                       onChange={(event) => setSelectedSlot(event.target.value)}>
-                      <option value="">لا يوجد وقت مفضّل</option>
+                      <option value="">{t('لا يوجد وقت مفضّل')}</option>
                       {availability?.slots.map((slot) => (
                         <option value={slot.startsAt} key={slot.startsAt}>{slot.localTime}</option>
                       ))}
                     </select>
-                    {!preferredDateSelected && <p className="field-help">حدد التاريخ المفضّل أولاً، ثم اختر الخدمة لعرض الأوقات الممكنة.</p>}
+                    {!preferredDateSelected && <p className="field-help">{t('حدد التاريخ المفضّل أولاً، ثم اختر الخدمة لعرض الأوقات الممكنة.')}</p>}
                     {preferredDateSelected && !selectedServiceId
-                      && <p className="field-help">اختر الخدمة أولاً لعرض الأوقات المتاحة حسب مدة الخدمة.</p>}
+                      && <p className="field-help">{t('اختر الخدمة أولاً لعرض الأوقات المتاحة حسب مدة الخدمة.')}</p>}
                     {preferredDateSelected && selectedServiceId && loadingAvailability
-                      && <p className="field-help" role="status">جارٍ تحميل الأوقات الممكنة...</p>}
-                    <p className="field-help">سيؤكد الحلاق الموعد أو يقترح وقتاً مناسباً.</p>
+                      && <p className="field-help" role="status">{t('جارٍ تحميل الأوقات الممكنة...')}</p>}
+                    <p className="field-help">{t('سيؤكد الحلاق الموعد أو يقترح وقتاً مناسباً.')}</p>
                   </>
                 )}
                 {selectedMode === 'DAY_QUEUE' && (
                   <>
-                    <label htmlFor="booking-queue-date">اليوم المطلوب</label>
+                    <label htmlFor="booking-queue-date">{t('اليوم المطلوب')}</label>
                     <input id="booking-queue-date" name="queueDate" type="date" min={getShopDate()}
                       aria-invalid={Boolean(validationErrors.scheduleDate)}
                       aria-describedby={validationErrors.scheduleDate ? 'booking-queue-date-error' : undefined}
@@ -515,23 +517,23 @@ function BookingPage() {
                   </>
                 )}
                 {loadingAvailability && (selectedMode !== 'CONFIRMATION_REQUEST' || preferredDateSelected)
-                  && <p className="field-help" role="status">جارٍ التحقق من ساعات العمل...</p>}
+                  && <p className="field-help" role="status">{t('جارٍ التحقق من ساعات العمل...')}</p>}
                 {!loadingAvailability && availability && !availability.open
-                  && <p className="form-message" role="alert">المحل مغلق في هذا اليوم.</p>}
+                  && <p className="form-message" role="alert">{t('المحل مغلق في هذا اليوم.')}</p>}
                 {!loadingAvailability && availability?.open
                   && (selectedMode === 'EXACT_APPOINTMENT' || selectedMode === 'CONFIRMATION_REQUEST')
                   && selectedServiceId
                   && availability.slots.length === 0
                   && <p className="field-help">{selectedMode === 'CONFIRMATION_REQUEST'
-                    ? 'يمكنك إرسال الطلب دون وقت مفضّل، وسيقترح الحلاق موعداً مناسباً.'
-                    : 'لا توجد مواعيد متاحة لهذه الخدمة في هذا اليوم.'}</p>}
+                    ? t('يمكنك إرسال الطلب دون وقت مفضّل، وسيقترح الحلاق موعداً مناسباً.')
+                    : t('لا توجد مواعيد متاحة لهذه الخدمة في هذا اليوم.')}</p>}
 
-                <label htmlFor="booking-notes">ملاحظة (اختياري)</label>
+                <label htmlFor="booking-notes">{t('ملاحظة (اختياري)')}</label>
                 <textarea id="booking-notes" name="notes" rows={3} maxLength={2000} />
                 <button className="button button--primary form-submit" type="submit"
                   disabled={authLoading || loadingProfile || isSubmitting
                     || (selectedDateNeedsAvailability && (loadingAvailability || availability?.open === false))}>
-                  {isSubmitting ? 'جارٍ إرسال الطلب...' : 'إرسال طلب الحجز'}
+                  {isSubmitting ? t('جارٍ إرسال الطلب...') : t('إرسال طلب الحجز')}
                 </button>
                 {error && <p className="form-message" role="alert">{error}</p>}
               </form>
@@ -544,35 +546,35 @@ function BookingPage() {
         {result && createPortal(
           <div className="booking-modal-backdrop booking-success-backdrop" role="presentation">
             <section className="booking-modal booking-success-modal" role="alertdialog" aria-modal="true"
-              aria-labelledby="booking-success-title" dir="rtl">
-              <button type="button" className="booking-modal-close" aria-label="إغلاق"
+              aria-labelledby="booking-success-title">
+              <button type="button" className="booking-modal-close" aria-label={t('إغلاق')}
                 onClick={() => setResult(null)}><X size={19} /></button>
               <span className="booking-success-mark" aria-hidden="true">✓</span>
-              <h2 id="booking-success-title">تم استلام طلبك بنجاح</h2>
-              <p>رقم الطلب: <strong dir="ltr">{result.bookingId.slice(0, 8)}</strong></p>
-              {result.queuePosition && <p>رقمك في قائمة الانتظار: <strong>{result.queuePosition}</strong></p>}
+              <h2 id="booking-success-title">{t('تم استلام طلبك بنجاح')}</h2>
+              <p>{t('رقم الطلب')}: <strong dir="ltr">{result.bookingId.slice(0, 8)}</strong></p>
+              {result.queuePosition && <p>{t('رقمك في قائمة الانتظار')}: <strong>{result.queuePosition}</strong></p>}
               {result.guestAccessToken && (
                 <div className="booking-guest-notifications">
-                  <p>فعّل الإشعارات على هذا الهاتف لتصلك رسالة عند تأكيد الموعد أو تعديله.</p>
+                  <p>{t('فعّل الإشعارات على هذا الهاتف لتصلك رسالة عند تأكيد الموعد أو تعديله.')}</p>
                   <button className="button button--primary form-submit" type="button"
                     onClick={() => void enableGuestPush()} disabled={guestPushBusy || guestPushEnabled}>
                     <BellRing size={17} />
-                    {guestPushBusy ? 'جارٍ تفعيل الإشعارات...' : guestPushEnabled ? 'إشعارات الحجز مفعّلة' : 'تفعيل إشعارات الحجز على هذا الهاتف'}
+                    {guestPushBusy ? t('جارٍ تفعيل الإشعارات...') : guestPushEnabled ? t('إشعارات الحجز مفعّلة') : t('تفعيل إشعارات الحجز على هذا الهاتف')}
                   </button>
                   {guestPushError && <p className="form-message" role="alert">{guestPushError}</p>}
                   {guestPushNotice && <p className="field-help" role="status">{guestPushNotice}</p>}
                   <Link className="text-link" to={`/guest-notifications/${encodeURIComponent(result.guestAccessToken)}`}>
-                    فتح مركز متابعة الحجز
+                    {t('فتح مركز متابعة الحجز')}
                   </Link>
                 </div>
               )}
               <button className="button button--primary form-submit" type="button"
-                onClick={() => setResult(null)}>موافق</button>
+                onClick={() => setResult(null)}>{t('موافق')}</button>
             </section>
           </div>,
           document.body,
         )}
-        <Link className="text-link booking-back-link" to="/">العودة إلى الرئيسية <ArrowLeft size={15} aria-hidden="true" /></Link>
+        <Link className="text-link booking-back-link" to="/">{t('العودة إلى الرئيسية')} <ArrowLeft size={15} aria-hidden="true" /></Link>
       </section>
     </div>
   )

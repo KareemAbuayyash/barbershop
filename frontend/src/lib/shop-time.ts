@@ -77,11 +77,11 @@ export function isoToShopLocalDateTime(value: string | null): string {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
 }
 
-export function formatShopDateTime(value: string | null): string {
+export function formatShopDateTime(value: string | null, locale = 'ar'): string {
   if (!value) {
     return 'لم يُحدد بعد'
   }
-  return new Intl.DateTimeFormat('ar', {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: shopTimeZone,
     dateStyle: 'medium',
     timeStyle: 'short',

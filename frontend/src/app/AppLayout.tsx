@@ -3,8 +3,10 @@ import { Outlet } from 'react-router-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import SiteFooter from '../components/layout/SiteFooter'
 import SiteHeader from '../components/layout/SiteHeader'
+import { useI18n } from '../lib/i18n'
 
 function AppLayout() {
+  const { t } = useI18n()
   const { pathname } = useLocation()
   const navigate = useNavigate()
 
@@ -17,7 +19,7 @@ function AppLayout() {
   if (pathname.startsWith('/owner')) {
     return (
       <>
-        <a className="skip-link" href="#main-content">انتقل إلى المحتوى</a>
+        <a className="skip-link" href="#main-content">{t('انتقل إلى المحتوى')}</a>
         <SiteHeader />
         <main id="main-content"><Outlet /></main>
       </>
@@ -26,7 +28,7 @@ function AppLayout() {
 
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">انتقل إلى المحتوى</a>
+      <a className="skip-link" href="#main-content">{t('انتقل إلى المحتوى')}</a>
       <SiteHeader />
       <main id="main-content">
         <Outlet />

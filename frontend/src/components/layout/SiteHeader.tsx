@@ -6,8 +6,10 @@ import Button from '../ui/Button'
 import { useAuth } from '../../features/auth/useAuth'
 import UnreadNotificationLink from '../../features/notifications/UnreadNotificationLink'
 import GuestNotificationLink from '../../features/notifications/GuestNotificationLink'
+import { useI18n } from '../../lib/i18n'
 
 function SiteHeader() {
+  const { language, toggleLanguage, t } = useI18n()
   const { user, isLoading, logout } = useAuth()
   const navigate = useNavigate()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -17,6 +19,15 @@ function SiteHeader() {
   const userMenuRef = useRef<HTMLDivElement>(null)
   const isOwner = user?.authorities.includes('ROLE_OWNER') ?? false
   const settingsPath = isOwner ? '/owner/settings' : '/my-settings'
+  const languageToggle = (
+    <button className="language-toggle" type="button" onClick={toggleLanguage}
+      aria-label={language === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}
+      title={language === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}>
+      <span className={language === 'ar' ? 'language-toggle-current' : ''} lang="ar">ع</span>
+      <span className="language-toggle-divider" aria-hidden="true">/</span>
+      <span className={language === 'en' ? 'language-toggle-current' : ''} lang="en">E</span>
+    </button>
+  )
 
   const closeMenu = () => {
     setIsMenuOpen(false)
@@ -36,7 +47,7 @@ function SiteHeader() {
       closeMenu()
       navigate('/', { replace: true })
     } catch {
-      setLogoutError('تعذر إنهاء الجلسة. حاول مرة أخرى.')
+      setLogoutError(t('تعذر إنهاء الجلسة. حاول مرة أخرى.'))
     }
   }
 
@@ -85,10 +96,10 @@ function SiteHeader() {
       </button>
       {isUserMenuOpen && <div className="header-account-dropdown" role="menu">
         <button className="header-logout" type="button" role="menuitem" onClick={() => void handleLogout()}>
-          <LogOut size={16} aria-hidden="true" /> تسجيل الخروج
+          <LogOut size={16} aria-hidden="true" /> {t('تسجيل الخروج')}
         </button>
         <Link to={settingsPath} role="menuitem" onClick={closeMenu}>
-          <Settings size={16} aria-hidden="true" /> الإعدادات
+          <Settings size={16} aria-hidden="true" /> {t('الإعدادات')}
         </Link>
       </div>}
     </div>
@@ -103,33 +114,35 @@ function SiteHeader() {
         </Link>
 
         <button ref={menuButtonRef} className="menu-toggle" type="button"
-          aria-label={isMenuOpen ? 'إغلاق القائمة' : 'فتح القائمة'} aria-expanded={isMenuOpen}
+          aria-label={t(isMenuOpen ? 'إغلاق القائمة' : 'فتح القائمة')} aria-expanded={isMenuOpen}
           aria-controls="primary-navigation" onClick={toggleMainMenu}>
           {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
 
         <nav className={`primary-navigation${isMenuOpen ? ' primary-navigation--open' : ''}`}
-          id="primary-navigation" aria-label="القائمة الرئيسية">
+          id="primary-navigation" aria-label={t('القائمة الرئيسية')}>
           {navigation.map((item) => (
             <NavLink to={item.href} key={item.href} end={item.href === '/'} onClick={closeMenu}>
-              {item.label}
+              {t(item.label)}
             </NavLink>
           ))}
-          {!isLoading && !user && <GuestNotificationLink onClick={closeMenu} />}
+          {!isLoading && !user && <><GuestNotificationLink onClick={closeMenu} />{languageToggle}</>}
           {!isLoading && (isOwner ? (
             <>
-              <NavLink className="login-link" to="/owner" onClick={closeMenu}>لوحة المالك</NavLink>
-              <UnreadNotificationLink to="/owner/notifications" label="الإشعارات" />
+              <NavLink className="login-link" to="/owner" onClick={closeMenu}>{t('لوحة المالك')}</NavLink>
+              <UnreadNotificationLink to="/owner/notifications" label={t('الإشعارات')} />
+              {languageToggle}
               {accountMenu}
             </>
           ) : user?.authorities.includes('ROLE_CUSTOMER') ? (
             <>
-              <NavLink className="login-link" to="/my-bookings" onClick={closeMenu}>حجوزاتي</NavLink>
-              <UnreadNotificationLink to="/my-notifications" label="الإشعارات" />
+              <NavLink className="login-link" to="/my-bookings" onClick={closeMenu}>{t('حجوزاتي')}</NavLink>
+              <UnreadNotificationLink to="/my-notifications" label={t('الإشعارات')} />
+              {languageToggle}
               {accountMenu}
             </>
-          ) : <NavLink className="login-link" to="/login" onClick={closeMenu}>تسجيل الدخول</NavLink>)}
-          <Button className="header-cta" to="/booking" onClick={closeMenu}>احجز موعدك</Button>
+          ) : <NavLink className="login-link" to="/login" onClick={closeMenu}>{t('تسجيل الدخول')}</NavLink>)}
+          <Button className="header-cta" to="/booking" onClick={closeMenu}>{t('احجز موعدك')}</Button>
         </nav>
         {logoutError && <p className="header-error" role="alert">{logoutError}</p>}
       </div>

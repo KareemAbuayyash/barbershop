@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom'
 import { FileText, Pencil, Search, UserRound, X } from 'lucide-react'
 import { apiRequest, getErrorMessage } from '../../../lib/api'
 import type { AdminCustomer, AdminCustomerDetails, AdminPage } from '../admin-api'
+import { useI18n } from '../../../lib/i18n'
 
 function AdminCustomersPage() {
+  const { t, language } = useI18n()
   const [query, setQuery] = useState('')
   const [customerType, setCustomerType] = useState<'ALL' | 'ACCOUNTS' | 'GUESTS'>('ALL')
   const [customers, setCustomers] = useState<AdminPage<AdminCustomer> | null>(null)
@@ -97,12 +99,12 @@ function AdminCustomersPage() {
     <div className="admin-page">
       <section className="admin-panel">
         <div className="admin-panel-heading">
-          <div><span className="admin-eyebrow">العلاقات وسجل الزيارات</span><h2>دليل العملاء</h2></div>
-          <span className="admin-result-count">{customers?.totalElements.toLocaleString('ar') ?? '—'} عميل</span>
+          <div><span className="admin-eyebrow">{t('العلاقات وسجل الزيارات')}</span><h2>{t('دليل العملاء')}</h2></div>
+          <span className="admin-result-count">{customers?.totalElements.toLocaleString(language) ?? '—'} {t('عميل')}</span>
         </div>
         <label className="admin-search">
           <Search size={17} aria-hidden="true" />
-          <input value={query} maxLength={150} placeholder="ابحث باسم العميل أو رقم الهاتف"
+          <input value={query} maxLength={150} placeholder={t('ابحث باسم العميل أو رقم الهاتف')}
             onChange={(event) => {
               setLoading(true)
               setError('')
@@ -110,7 +112,7 @@ function AdminCustomersPage() {
               setPage(0)
             }} />
         </label>
-        <div className="admin-customer-filters" role="group" aria-label="تصفية العملاء">
+        <div className="admin-customer-filters" role="group" aria-label={t('تصفية العملاء')}>
           {([
             ['ALL', 'كل العملاء'],
             ['ACCOUNTS', 'أصحاب الحسابات'],
@@ -123,14 +125,14 @@ function AdminCustomersPage() {
                 setLoading(true)
                 setCustomerType(type)
                 setPage(0)
-              }}>{label}</button>
+              }}>{t(label)}</button>
           ))}
         </div>
-        {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
-        {loading ? <p className="admin-state" role="status">جارٍ تحميل العملاء...</p>
+        {error && <p className="admin-message admin-message--error" role="alert">{t(error)}</p>}
+        {loading ? <p className="admin-state" role="status">{t('جارٍ تحميل العملاء...')}</p>
           : !customers?.content.length ? (
-            <div className="admin-empty"><UserRound size={25} /><h3>لا يوجد عملاء بعد</h3>
-              <p>يظهر العميل هنا بعد إنشاء حجز مرتبط ببياناته.</p></div>
+            <div className="admin-empty"><UserRound size={25} /><h3>{t('لا يوجد عملاء بعد')}</h3>
+              <p>{t('يظهر العميل هنا بعد إنشاء حجز مرتبط ببياناته.')}</p></div>
           ) : (
             <>
               <div className="admin-customer-list">
@@ -138,29 +140,29 @@ function AdminCustomersPage() {
                   <article className="admin-customer-row" key={customer.id}>
                     <span className="admin-customer-avatar">{customer.name.slice(0, 1)}</span>
                     <span className="admin-customer-identity"><strong>{customer.name}</strong>
-                      <small dir="ltr">{customer.phoneNumber || 'لا يوجد رقم هاتف'}</small>
-                      <small>{customer.hasAccount ? 'حساب مسجل' : 'حجز كضيف'}</small></span>
-                    <span><small>الزيارات</small><strong>{customer.visits.toLocaleString('ar')}</strong></span>
-                    <span><small>المدفوع</small><strong>{customer.totalPaid.toLocaleString('ar')} ₪</strong></span>
-                    <span><small>المتبقي</small><strong className={customer.outstandingDebt > 0 ? 'admin-debt-value' : ''}>
-                      {customer.outstandingDebt.toLocaleString('ar')} ₪</strong></span>
+                      <small dir="ltr">{customer.phoneNumber || t('لا يوجد رقم هاتف')}</small>
+                      <small>{t(customer.hasAccount ? 'حساب مسجل' : 'حجز كضيف')}</small></span>
+                    <span><small>{t('الزيارات')}</small><strong>{customer.visits.toLocaleString(language)}</strong></span>
+                    <span><small>{t('المدفوع')}</small><strong>{customer.totalPaid.toLocaleString(language)} ₪</strong></span>
+                    <span><small>{t('المتبقي')}</small><strong className={customer.outstandingDebt > 0 ? 'admin-debt-value' : ''}>
+                      {customer.outstandingDebt.toLocaleString(language)} ₪</strong></span>
                     <div className="admin-customer-actions">
                       <button type="button" className="admin-secondary-button"
-                        onClick={() => void showCustomer(customer)}>ملف العميل</button>
+                        onClick={() => void showCustomer(customer)}>{t('ملف العميل')}</button>
                     </div>
                   </article>
                 ))}
               </div>
               <div className="admin-pagination">
-                <span>صفحة {(customers.page + 1).toLocaleString('ar')} من {Math.max(customers.totalPages, 1).toLocaleString('ar')}</span>
+                <span>{language === 'ar' ? 'صفحة' : 'Page'} {(customers.page + 1).toLocaleString(language)} {language === 'ar' ? 'من' : 'of'} {Math.max(customers.totalPages, 1).toLocaleString(language)}</span>
                 <div><button type="button" disabled={page === 0} onClick={() => {
                   setLoading(true)
                   setPage((value) => Math.max(0, value - 1))
-                }}>السابق</button>
+                }}>{t('السابق')}</button>
                   <button type="button" disabled={page + 1 >= customers.totalPages} onClick={() => {
                     setLoading(true)
                     setPage((value) => value + 1)
-                  }}>التالي</button></div>
+                  }}>{t('التالي')}</button></div>
               </div>
             </>
           )}
@@ -171,84 +173,84 @@ function AdminCustomersPage() {
             if (event.target === event.currentTarget) setSelected(null)
           }}>
         <section className="admin-booking-modal admin-customer-modal" role="dialog" aria-modal="true"
-          aria-labelledby="customer-modal-title" dir="rtl">
+          aria-labelledby="customer-modal-title">
           <div className="admin-panel-heading">
-            <div><span className="admin-eyebrow">إدارة العملاء</span><h2 id="customer-modal-title">{selected.customer.name}</h2></div>
-            <button type="button" className="admin-icon-button" aria-label="إغلاق" onClick={() => setSelected(null)}><X size={17} /></button>
+            <div><span className="admin-eyebrow">{t('إدارة العملاء')}</span><h2 id="customer-modal-title">{selected.customer.name}</h2></div>
+            <button type="button" className="admin-icon-button" aria-label={t('إغلاق')} onClick={() => setSelected(null)}><X size={17} /></button>
           </div>
           <p className="admin-contact-line" dir="ltr">{selected.customer.phoneNumber || '—'}</p>
-          {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
-          {notice && <p className="admin-message" role="status">{notice}</p>}
-          <div className="admin-customer-tabs" role="tablist" aria-label="خيارات العميل">
+          {error && <p className="admin-message admin-message--error" role="alert">{t(error)}</p>}
+          {notice && <p className="admin-message" role="status">{t(notice)}</p>}
+          <div className="admin-customer-tabs" role="tablist" aria-label={t('خيارات العميل')}>
             <button type="button" role="tab" aria-selected={customerView === 'profile'}
               className={customerView === 'profile' ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
-              onClick={() => setCustomerView('profile')}><UserRound size={15} /> ملف الحساب</button>
+              onClick={() => setCustomerView('profile')}><UserRound size={15} /> {t('ملف الحساب')}</button>
             <button type="button" role="tab" aria-selected={customerView === 'report'}
               className={customerView === 'report' ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
-              onClick={() => { setCustomerView('report'); setEditingCustomer(false) }}><FileText size={15} /> تقرير العميل</button>
+              onClick={() => { setCustomerView('report'); setEditingCustomer(false) }}><FileText size={15} /> {t('تقرير العميل')}</button>
           </div>
           <div className="admin-summary-chips">
-            <span>{selected.customer.visits.toLocaleString('ar')} زيارة</span>
-            <span>المدفوع {selected.customer.totalPaid.toLocaleString('ar')} ₪</span>
-            <span>الرصيد {selected.customer.outstandingDebt.toLocaleString('ar')} ₪</span>
+            <span>{selected.customer.visits.toLocaleString(language)} {t('زيارة')}</span>
+            <span>{t('المدفوع')} {selected.customer.totalPaid.toLocaleString(language)} ₪</span>
+            <span>{t('الرصيد')} {selected.customer.outstandingDebt.toLocaleString(language)} ₪</span>
           </div>
           {customerView === 'profile' ? (
             <>
               <div className="admin-customer-modal-actions">
-                <h3>بيانات العميل</h3>
+                <h3>{t('بيانات العميل')}</h3>
                 <button type="button" className="admin-secondary-button"
                   onClick={() => setEditingCustomer((value) => !value)}><Pencil size={15} />
-                  {editingCustomer ? 'إلغاء التعديل' : 'تعديل البيانات'}</button>
+                  {t(editingCustomer ? 'إلغاء التعديل' : 'تعديل البيانات')}</button>
               </div>
               {editingCustomer && <form className="admin-form admin-customer-edit" onSubmit={(event) => void saveCustomer(event)}>
-                <label>الاسم<input value={editName} maxLength={150} required
+                <label>{t('الاسم')}<input value={editName} maxLength={150} required
                   onChange={(event) => setEditName(event.target.value)} /></label>
-                <label>رقم الهاتف<input value={editPhone} type="tel" maxLength={32}
+                <label>{t('رقم الهاتف')}<input value={editPhone} type="tel" maxLength={32}
                   onChange={(event) => setEditPhone(event.target.value)} /></label>
                 <button className="admin-primary-button" disabled={saving}>
-                  {saving ? 'جارٍ الحفظ...' : 'حفظ بيانات العميل'}
+                  {saving ? t('جارٍ الحفظ...') : t('حفظ بيانات العميل')}
                 </button>
               </form>}
-              <h3 className="admin-subheading">حسابات الدخول</h3>
+              <h3 className="admin-subheading">{t('حسابات الدخول')}</h3>
               {selected.accounts.length ? selected.accounts.map((account) => (
                 <form className="admin-customer-account" key={account.id}
                   onSubmit={(event) => void resetPassword(event, account.id)}>
                   <div><strong>{account.displayName}</strong><small dir="ltr">{account.username}</small></div>
-                  <label>كلمة مرور جديدة
+                  <label>{t('كلمة مرور جديدة')}
                     <input name="newPassword" type="password" autoComplete="new-password"
                       minLength={8} maxLength={72} required />
                   </label>
                   <button type="submit" className="admin-secondary-button" disabled={saving}>
-                    تغيير كلمة المرور
+                    {language === 'ar' ? 'تغيير كلمة المرور' : 'Change password'}
                   </button>
                 </form>
-              )) : <p className="admin-state">لا يوجد لهذا العميل حساب دخول مسجل.</p>}
+              )) : <p className="admin-state">{language === 'ar' ? 'لا يوجد لهذا العميل حساب دخول مسجل.' : 'This customer has no registered login account.'}</p>}
             </>
           ) : (
             <>
-              <h3 className="admin-subheading">سجل الزيارات والحجوزات</h3>
+              <h3 className="admin-subheading">{language === 'ar' ? 'سجل الزيارات والحجوزات' : 'Visits and bookings'}</h3>
               {selected.bookings.length ? selected.bookings.map((booking) => (
                 <article className="admin-customer-report-booking" key={booking.id}>
                   <div className="admin-history-row">
                     <span>{booking.serviceName}</span><span>{booking.status}</span>
                     <strong>{booking.servicePrice.toLocaleString('ar')} ₪</strong>
-                    <small>{new Date(booking.createdAt).toLocaleDateString('ar')}</small>
+                    <small>{new Date(booking.createdAt).toLocaleDateString(language)}</small>
                   </div>
                   {booking.products.length > 0 && <p className="admin-customer-purchases">
-                    المنتجات: {booking.products.map((product) =>
-                      `${product.productName} (${product.quantity.toLocaleString('ar')} ${product.unit}) · ${product.lineTotal.toLocaleString('ar')} ₪`)
+                    {language === 'ar' ? 'المنتجات:' : 'Products:'} {booking.products.map((product) =>
+                      `${product.productName} (${product.quantity.toLocaleString(language)} ${product.unit}) · ${product.lineTotal.toLocaleString(language)} ₪`)
                       .join('، ')}
                   </p>}
                 </article>
-              )) : <p className="admin-state">لا يوجد سجل حجوزات.</p>}
-              <h3 className="admin-subheading">سجل الدفعات</h3>
+              )) : <p className="admin-state">{language === 'ar' ? 'لا يوجد سجل حجوزات.' : 'No booking history.'}</p>}
+              <h3 className="admin-subheading">{language === 'ar' ? 'سجل الدفعات' : 'Payment history'}</h3>
               {selected.payments.length ? selected.payments.map((payment) => (
                 <div className="admin-history-row" key={payment.id}>
                   <span>{payment.method}</span><span>{payment.notes || 'دفعة'}</span>
                   <strong>{payment.amount.toLocaleString('ar')} ₪</strong>
-                  <small>{new Date(payment.paidAt).toLocaleDateString('ar')}</small>
+                  <small>{new Date(payment.paidAt).toLocaleDateString(language)}</small>
                 </div>
-              )) : <p className="admin-state">لا توجد دفعات مسجلة.</p>}
+              )) : <p className="admin-state">{language === 'ar' ? 'لا توجد دفعات مسجلة.' : 'No payments recorded.'}</p>}
             </>
           )}
         </section>
