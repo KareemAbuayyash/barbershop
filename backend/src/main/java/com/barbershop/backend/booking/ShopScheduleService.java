@@ -98,7 +98,7 @@ public class ShopScheduleService {
 		return new Availability(true, slots);
 	}
 
-	public void requireOpenQueueDate(LocalDate date) {
+	public void requireOpenDate(LocalDate date) {
 		if (openingHours(date) == null) {
 			throw invalidSchedule("The shop is closed on the selected date.");
 		}

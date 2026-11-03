@@ -130,7 +130,7 @@ public class BookingManagementService {
 				if (requestedStart != null) {
 					throw badRequest("Invalid queue confirmation", "Queue bookings cannot be assigned an appointment time.");
 				}
-				shopScheduleService.requireOpenQueueDate(booking.getQueueDate());
+				shopScheduleService.requireOpenDate(booking.getQueueDate());
 			}
 			case EXACT_APPOINTMENT, LEGACY -> {
 				if (booking.getStartsAt() == null) {
@@ -219,6 +219,10 @@ public class BookingManagementService {
 						&& request.preferredDate().isBefore(LocalDate.now(SHOP_ZONE))) {
 					throw badRequest("Invalid preferred date", "Preferred date must not be before the current shop-local date.");
 				}
+				if (request.preferredDate() != null && request.startsAt() == null
+						&& !request.preferredDate().equals(previousPreferredDate)) {
+					shopScheduleService.requireOpenDate(request.preferredDate());
+				}
 				if (request.startsAt() != null) {
 					requireFutureStart(request.startsAt());
 					shopScheduleService.requireAppointmentTime(
@@ -238,7 +242,7 @@ public class BookingManagementService {
 				if (request.queueDate().isBefore(LocalDate.now(SHOP_ZONE))) {
 					throw badRequest("Invalid queue date", "Queue date must not be before the current shop-local date.");
 				}
-				shopScheduleService.requireOpenQueueDate(request.queueDate());
+				shopScheduleService.requireOpenDate(request.queueDate());
 				if (!request.queueDate().equals(booking.getQueueDate())) {
 					lockQueueCounter(request.queueDate());
 					booking.setQueueDate(request.queueDate());
@@ -249,7 +253,7 @@ public class BookingManagementService {
 				if (request.startsAt() != null || request.preferredDate() != null || request.queueDate() != null) {
 					throw badRequest("Invalid same-day queue request", "Same-day queue bookings do not accept a date or time.");
 				}
-				shopScheduleService.requireOpenQueueDate(booking.getQueueDate());
+				shopScheduleService.requireOpenDate(booking.getQueueDate());
 			}
 		}
 		if (request.ownerNote() != null) {

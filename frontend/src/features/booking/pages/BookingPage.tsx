@@ -171,7 +171,7 @@ function BookingPage() {
     const needsAvailability = usesAppointmentSlots
       || selectedMode === 'DAY_QUEUE'
       || selectedMode === 'SAME_DAY_QUEUE'
-    if (!needsAvailability || (usesAppointmentSlots && !selectedServiceId)) {
+    if (!needsAvailability) {
       setAvailability(null)
       setLoadingAvailability(false)
       return
@@ -180,7 +180,7 @@ function BookingPage() {
     let active = true
     const date = selectedMode === 'SAME_DAY_QUEUE' ? getShopDate() : scheduleDate
     const params = new URLSearchParams({ date })
-    if (usesAppointmentSlots) params.set('serviceId', selectedServiceId)
+    if (usesAppointmentSlots && selectedServiceId) params.set('serviceId', selectedServiceId)
     setLoadingAvailability(true)
     void apiRequest<BookingAvailability>(`/api/bookings/availability?${params}`)
       .then((result) => { if (active) setAvailability(result) })
@@ -200,6 +200,10 @@ function BookingPage() {
       ].filter((mode): mode is BookingMode => Boolean(mode))
     : []
   const bookingClosed = settings?.newBookingsDisabled ?? false
+  const selectedDateNeedsAvailability = selectedMode === 'EXACT_APPOINTMENT'
+    || selectedMode === 'DAY_QUEUE'
+    || selectedMode === 'SAME_DAY_QUEUE'
+    || (selectedMode === 'CONFIRMATION_REQUEST' && preferredDateSelected)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -456,13 +460,13 @@ function BookingPage() {
                 {selectedMode === 'SAME_DAY_QUEUE' && (
                   <p className="field-help">سيُضاف طلبك إلى قائمة انتظار اليوم حسب ترتيب وصوله.</p>
                 )}
-                {loadingAvailability && selectedMode !== 'CONFIRMATION_REQUEST'
+                {loadingAvailability && (selectedMode !== 'CONFIRMATION_REQUEST' || preferredDateSelected)
                   && <p className="field-help" role="status">جارٍ التحقق من ساعات العمل...</p>}
                 {!loadingAvailability && availability && !availability.open
-                  && selectedMode !== 'CONFIRMATION_REQUEST'
                   && <p className="form-message" role="alert">المحل مغلق في هذا اليوم.</p>}
                 {!loadingAvailability && availability?.open
                   && (selectedMode === 'EXACT_APPOINTMENT' || selectedMode === 'CONFIRMATION_REQUEST')
+                  && selectedServiceId
                   && availability.slots.length === 0
                   && <p className="field-help">{selectedMode === 'CONFIRMATION_REQUEST'
                     ? 'يمكنك إرسال الطلب دون وقت مفضّل، وسيقترح الحلاق موعداً مناسباً.'
@@ -472,9 +476,7 @@ function BookingPage() {
                 <textarea id="booking-notes" name="notes" rows={3} maxLength={2000} />
                 <button className="button button--primary form-submit" type="submit"
                   disabled={authLoading || loadingProfile || isSubmitting
-                    || ((selectedMode === 'EXACT_APPOINTMENT'
-                      || selectedMode === 'DAY_QUEUE' || selectedMode === 'SAME_DAY_QUEUE')
-                      && (loadingAvailability || !availability?.open))
+                    || (selectedDateNeedsAvailability && (loadingAvailability || !availability?.open))
                     || (selectedMode === 'EXACT_APPOINTMENT' && !selectedSlot)}>
                   {isSubmitting ? 'جارٍ إرسال الطلب...' : 'إرسال طلب الحجز'}
                 </button>

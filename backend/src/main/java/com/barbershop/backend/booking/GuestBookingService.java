@@ -102,8 +102,11 @@ public class GuestBookingService {
 		if (validated.mode() == BookingMode.EXACT_APPOINTMENT) {
 			shopScheduleService.requireAppointmentTime(
 					validated.startsAt(), service.getDurationMinutes(), null);
+		} else if (validated.mode() == BookingMode.CONFIRMATION_REQUEST
+				&& validated.preferredDate() != null && validated.startsAt() == null) {
+			shopScheduleService.requireOpenDate(validated.preferredDate());
 		} else if (validated.queueDate() != null) {
-			shopScheduleService.requireOpenQueueDate(validated.queueDate());
+			shopScheduleService.requireOpenDate(validated.queueDate());
 		}
 		CustomerEntity customer = customerRepository.saveAndFlush(
 				new CustomerEntity(validated.customerName(), validated.customerPhone()));
