@@ -39,7 +39,8 @@ public final class AdminDtos {
 			String phoneNumber,
 			long visits,
 			BigDecimal totalPaid,
-			BigDecimal outstandingDebt) {
+			BigDecimal outstandingDebt,
+			boolean hasAccount) {
 	}
 
 	public record CustomerBooking(

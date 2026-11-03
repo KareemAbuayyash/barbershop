@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
-      allowedHosts: ['sometimes-narrow-pride-fig.trycloudflare.com'],
+      allowedHosts: ['intersection-responded-scholar-personalized.trycloudflare.com'],
     },
   }
 })

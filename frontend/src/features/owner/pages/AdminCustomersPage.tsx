@@ -6,6 +6,7 @@ import type { AdminCustomer, AdminCustomerDetails, AdminPage } from '../admin-ap
 
 function AdminCustomersPage() {
   const [query, setQuery] = useState('')
+  const [customerType, setCustomerType] = useState<'ALL' | 'ACCOUNTS' | 'GUESTS'>('ALL')
   const [customers, setCustomers] = useState<AdminPage<AdminCustomer> | null>(null)
   const [selected, setSelected] = useState<AdminCustomerDetails | null>(null)
   const [page, setPage] = useState(0)
@@ -21,22 +22,26 @@ function AdminCustomersPage() {
 
   useEffect(() => {
     let active = true
-    const params = new URLSearchParams({ page: String(page), size: '20' })
+    const params = new URLSearchParams({ page: String(page), size: '20', type: customerType })
     if (query.trim()) params.set('q', query.trim())
     void apiRequest<AdminPage<AdminCustomer>>(`/api/admin/customers?${params}`)
       .then((result) => { if (active) setCustomers(result) })
       .catch((cause: unknown) => { if (active) setError(getErrorMessage(cause, 'تعذر تحميل العملاء.')) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [page, query, refreshKey])
+  }, [customerType, page, query, refreshKey])
 
-  const showCustomer = async (id: string) => {
+  const customerTypeParam = (hasAccount: boolean) => `type=${hasAccount ? 'ACCOUNTS' : 'GUESTS'}`
+
+  const showCustomer = async (customer: AdminCustomer) => {
     setError('')
     setNotice('')
     setCustomerView('profile')
     setEditingCustomer(false)
     try {
-      const details = await apiRequest<AdminCustomerDetails>(`/api/admin/customers/${id}`)
+      const details = await apiRequest<AdminCustomerDetails>(
+        `/api/admin/customers/${customer.id}?${customerTypeParam(customer.hasAccount)}`,
+      )
       setSelected(details)
       setEditName(details.customer.name)
       setEditPhone(details.customer.phoneNumber ?? '')
@@ -52,7 +57,8 @@ function AdminCustomersPage() {
     setError('')
     setNotice('')
     try {
-      const updated = await apiRequest<AdminCustomerDetails>(`/api/admin/customers/${selected.customer.id}`, {
+      const updated = await apiRequest<AdminCustomerDetails>(
+        `/api/admin/customers/${selected.customer.id}?${customerTypeParam(selected.customer.hasAccount)}`, {
         method: 'PUT',
         body: JSON.stringify({ name: editName.trim(), phoneNumber: editPhone.trim() || null }),
       })
@@ -60,7 +66,7 @@ function AdminCustomersPage() {
       setEditName(updated.customer.name)
       setEditPhone(updated.customer.phoneNumber ?? '')
       setRefreshKey((value) => value + 1)
-      setNotice('تم حفظ بيانات العميل والحسابات المرتبطة به.')
+      setNotice('تم حفظ بيانات العميل.')
     } catch (cause) {
       setError(getErrorMessage(cause, 'تعذر حفظ بيانات العميل.'))
     } finally { setSaving(false) }
@@ -75,7 +81,8 @@ function AdminCustomersPage() {
     setError('')
     setNotice('')
     try {
-      await apiRequest(`/api/admin/customers/${selected.customer.id}/accounts/${accountId}/password`, {
+      await apiRequest(
+        `/api/admin/customers/${selected.customer.id}/accounts/${accountId}/password?${customerTypeParam(selected.customer.hasAccount)}`, {
         method: 'PUT',
         body: JSON.stringify({ newPassword: String(password) }),
       })
@@ -103,6 +110,22 @@ function AdminCustomersPage() {
               setPage(0)
             }} />
         </label>
+        <div className="admin-customer-filters" role="group" aria-label="تصفية العملاء">
+          {([
+            ['ALL', 'كل العملاء'],
+            ['ACCOUNTS', 'أصحاب الحسابات'],
+            ['GUESTS', 'الضيوف'],
+          ] as const).map(([type, label]) => (
+            <button key={type} type="button"
+              className={customerType === type ? 'admin-filter-pill admin-filter-pill--active' : 'admin-filter-pill'}
+              aria-pressed={customerType === type}
+              onClick={() => {
+                setLoading(true)
+                setCustomerType(type)
+                setPage(0)
+              }}>{label}</button>
+          ))}
+        </div>
         {error && <p className="admin-message admin-message--error" role="alert">{error}</p>}
         {loading ? <p className="admin-state" role="status">جارٍ تحميل العملاء...</p>
           : !customers?.content.length ? (
@@ -115,14 +138,15 @@ function AdminCustomersPage() {
                   <article className="admin-customer-row" key={customer.id}>
                     <span className="admin-customer-avatar">{customer.name.slice(0, 1)}</span>
                     <span className="admin-customer-identity"><strong>{customer.name}</strong>
-                      <small dir="ltr">{customer.phoneNumber || 'لا يوجد رقم هاتف'}</small></span>
+                      <small dir="ltr">{customer.phoneNumber || 'لا يوجد رقم هاتف'}</small>
+                      <small>{customer.hasAccount ? 'حساب مسجل' : 'حجز كضيف'}</small></span>
                     <span><small>الزيارات</small><strong>{customer.visits.toLocaleString('ar')}</strong></span>
                     <span><small>المدفوع</small><strong>{customer.totalPaid.toLocaleString('ar')} ₪</strong></span>
                     <span><small>المتبقي</small><strong className={customer.outstandingDebt > 0 ? 'admin-debt-value' : ''}>
                       {customer.outstandingDebt.toLocaleString('ar')} ₪</strong></span>
                     <div className="admin-customer-actions">
                       <button type="button" className="admin-secondary-button"
-                        onClick={() => void showCustomer(customer.id)}>ملف الحساب</button>
+                        onClick={() => void showCustomer(customer)}>ملف العميل</button>
                     </div>
                   </article>
                 ))}

@@ -59,7 +59,7 @@ function subscriptionUsesApplicationKey(subscription: PushSubscription, publicKe
   return current.length === expected.length && current.every((byte, index) => byte === expected[index])
 }
 
-function NotificationSettingsPage() {
+function NotificationSettingsPage({ embedded = false }: { embedded?: boolean }) {
   const isOwner = window.location.pathname.startsWith('/owner')
   const [preferences, setPreferences] = useState<Record<string, boolean>>({})
   const [pushConfigured, setPushConfigured] = useState(false)
@@ -185,15 +185,15 @@ function NotificationSettingsPage() {
   }
 
   return (
-    <section className="notification-settings-page" dir="rtl">
-      <header className="notification-settings-heading">
+    <section className={`notification-settings-page${embedded ? ' notification-settings-page--embedded' : ''}`} dir="rtl">
+      {!embedded && <header className="notification-settings-heading">
         <div>
           <span>{isOwner ? 'إدارة المحل' : 'إعدادات الحساب'}</span>
           <h1>إعدادات الإشعارات</h1>
           <p>اسمح بالإشعارات مرة واحدة لهذا الجهاز؛ سيرتبط تلقائياً بأي حساب تسجل الدخول به.</p>
         </div>
         <Link to={isOwner ? '/owner/settings' : '/my-settings'}>العودة للإعدادات</Link>
-      </header>
+      </header>}
       {error && <p className="notification-feedback notification-feedback--error" role="alert">{error}</p>}
       {notice && <p className="notification-feedback" role="status">{notice}</p>}
       <section className="notification-settings-card">

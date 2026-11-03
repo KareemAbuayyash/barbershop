@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Bell, CheckCheck, RefreshCw } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Bell, CheckCheck, RefreshCw, Settings, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest, getErrorMessage } from '../../lib/api'
 import { formatShopDateTime } from '../../lib/shop-time'
+import NotificationSettingsPage from './NotificationSettingsPage'
 
 interface NotificationItem {
   id: string
@@ -29,6 +31,7 @@ function NotificationCenterPage() {
   const [center, setCenter] = useState<NotificationCenter | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -45,6 +48,15 @@ function NotificationCenterPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!settingsOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSettingsOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [settingsOpen])
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') void load() }
@@ -102,6 +114,11 @@ function NotificationCenterPage() {
               <CheckCheck size={16} /> تحديد الكل كمقروء
             </button>
           )}
+          <button className="notification-settings-trigger" type="button"
+            aria-label="إعدادات الإشعارات" title="إعدادات الإشعارات"
+            onClick={() => setSettingsOpen(true)}>
+            <Settings size={17} /> <span>الإعدادات</span>
+          </button>
         </div>
       </header>
 
@@ -127,6 +144,20 @@ function NotificationCenterPage() {
             </button>
           )) : <p className="notification-empty">لا توجد إشعارات حالياً.</p>}
       </section>
+      {settingsOpen && createPortal(
+        <div className="notification-settings-modal-backdrop" role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSettingsOpen(false)
+          }}>
+          <section className="notification-settings-modal" role="dialog" aria-modal="true"
+            aria-label="إعدادات الإشعارات" dir="rtl">
+            <button className="notification-settings-modal-close" type="button" aria-label="إغلاق الإعدادات"
+              onClick={() => setSettingsOpen(false)}><X size={19} /></button>
+            <NotificationSettingsPage embedded />
+          </section>
+        </div>,
+        document.body,
+      )}
     </section>
   )
 }

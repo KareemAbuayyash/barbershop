@@ -115,7 +115,7 @@ function SiteHeader() {
               {item.label}
             </NavLink>
           ))}
-          <GuestNotificationLink onClick={closeMenu} />
+          {!isLoading && !user && <GuestNotificationLink onClick={closeMenu} />}
           {!isLoading && (isOwner ? (
             <>
               <NavLink className="login-link" to="/owner" onClick={closeMenu}>لوحة المالك</NavLink>

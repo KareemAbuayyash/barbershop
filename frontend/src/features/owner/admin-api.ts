@@ -15,6 +15,7 @@ export interface AdminCustomer {
   visits: number
   totalPaid: number
   outstandingDebt: number
+  hasAccount: boolean
 }
 
 export interface AdminCustomerDetails {

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
@@ -119,8 +119,22 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   const [loadingAppointmentSlots, setLoadingAppointmentSlots] = useState(false)
   const [selectedAppointmentSlot, setSelectedAppointmentSlot] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [queueReordering, setQueueReordering] = useState(false)
+  const queueReorderInFlight = useRef(false)
 
   const appliedRange = useMemo(() => getPresetRange(preset, getShopDate()), [preset])
+  const displayedBookings = useMemo(() => {
+    if (!result) return []
+    if (!queueOnly) return result.content
+    return [...result.content].sort((left, right) => {
+      const dateOrder = (left.queueDate ?? '').localeCompare(right.queueDate ?? '')
+      if (dateOrder) return dateOrder
+      const positionOrder = (left.queuePosition ?? Number.MAX_SAFE_INTEGER)
+        - (right.queuePosition ?? Number.MAX_SAFE_INTEGER)
+      if (positionOrder) return positionOrder
+      return left.createdAt.localeCompare(right.createdAt)
+    })
+  }, [queueOnly, result])
 
   useEffect(() => {
     void apiRequest<AdminEmployee[]>('/api/admin/employees')
@@ -154,16 +168,20 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   }, [appliedRange, fromDate, page, preset, query, queueOnly, status, toDate, refreshKey])
 
   useEffect(() => {
+    let refreshTimer = 0
     const refreshBookings = () => {
-      setLoading(true)
       setRefreshKey((value) => value + 1)
     }
     const onServiceWorkerMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'barbershop:notification-received') refreshBookings()
+      if (event.data?.type === 'barbershop:notification-received') {
+        window.clearTimeout(refreshTimer)
+        refreshTimer = window.setTimeout(refreshBookings, 250)
+      }
     }
     window.addEventListener('focus', refreshBookings)
     navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage)
     return () => {
+      window.clearTimeout(refreshTimer)
       window.removeEventListener('focus', refreshBookings)
       navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
     }
@@ -215,7 +233,11 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     setError('')
     setNotice('')
     try {
-      await apiRequest(`/api/bookings/${booking.id}/${action}`, { method: 'PATCH' })
+      const updated = await apiRequest<AdminBooking>(`/api/bookings/${booking.id}/${action}`, { method: 'PATCH' })
+      setResult((current) => current && ({
+        ...current,
+        content: current.content.map((item) => item.id === updated.id ? updated : item),
+      }))
       setNotice(action === 'confirm' ? 'تم تأكيد الحجز.' : 'تم إلغاء الحجز.')
       setLoading(true)
       setRefreshKey((value) => value + 1)
@@ -266,10 +288,14 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
     setError('')
     setNotice('')
     try {
-      await apiRequest(`/api/bookings/${booking.id}/confirm`, {
+      const updated = await apiRequest<AdminBooking>(`/api/bookings/${booking.id}/confirm`, {
         method: 'PATCH',
         body: JSON.stringify({ startsAt }),
       })
+      setResult((current) => current && ({
+        ...current,
+        content: current.content.map((item) => item.id === updated.id ? updated : item),
+      }))
       setConfirmingBookingId('')
       setNotice('تم تحديد الموعد وتأكيد الحجز.')
       setLoading(true)
@@ -328,7 +354,9 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
   }
 
   const moveQueueBooking = async (booking: AdminBooking, direction: -1 | 1) => {
-    if (!booking.queueDate) return
+    if (!booking.queueDate || queueReorderInFlight.current) return
+    queueReorderInFlight.current = true
+    setQueueReordering(true)
     setBusyBookingId(booking.id)
     setError('')
     setNotice('')
@@ -359,11 +387,15 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
         body: JSON.stringify({ date: booking.queueDate, bookingIds: active.map((item) => item.id) }),
       })
       setNotice('تم تحديث ترتيب قائمة الانتظار.')
-      setLoading(true)
+      // Keep the current list visible while the refreshed order loads.
       setRefreshKey((value) => value + 1)
     } catch (cause) {
       setError(getErrorMessage(cause, 'تعذر إعادة ترتيب قائمة الانتظار.'))
-    } finally { setBusyBookingId('') }
+    } finally {
+      queueReorderInFlight.current = false
+      setQueueReordering(false)
+      setBusyBookingId('')
+    }
   }
 
   const choosePreset = (next: Preset) => {
@@ -444,9 +476,9 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
               <div className="admin-table-head">
                 <span>العميل</span><span>الخدمة</span><span>التاريخ</span><span>الحالة</span><span>القيمة</span><span>الإجراءات</span>
               </div>
-                {result.content.map((booking, index) => (
+                {displayedBookings.map((booking, index) => (
                 <Fragment key={booking.id}>
-                  {(index === 0 || result.content[index - 1]?.status !== booking.status) && (
+                  {!queueOnly && (index === 0 || displayedBookings[index - 1]?.status !== booking.status) && (
                     <h3 className="admin-booking-group-heading">{statusNames[booking.status]}</h3>
                   )}
                   <div className="admin-booking-entry">
@@ -498,10 +530,12 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                       && booking.status !== 'COMPLETED' && (
                         <>
                           <button type="button" className="admin-icon-button" aria-label="رفع ترتيب الدور"
-                            title="رفع الدور" disabled={busyBookingId === booking.id || booking.queuePosition === 1}
+                            title="رفع الدور"
+                            disabled={queueReordering || busyBookingId === booking.id || booking.queuePosition === 1}
                             onClick={() => void moveQueueBooking(booking, -1)}>↑</button>
                           <button type="button" className="admin-icon-button" aria-label="خفض ترتيب الدور"
-                            title="خفض الدور" disabled={busyBookingId === booking.id}
+                            title="خفض الدور"
+                            disabled={queueReordering || busyBookingId === booking.id}
                             onClick={() => void moveQueueBooking(booking, 1)}>↓</button>
                         </>
                       )}
@@ -543,12 +577,6 @@ function AdminBookingsPage({ queueOnly = false }: { queueOnly?: boolean }) {
                       )}
                   </div>
                 </article>
-                {(booking.notes || booking.ownerNote) && (
-                  <div className="admin-booking-notes-summary">
-                    {booking.notes && <p><strong>ملاحظة الزبون:</strong> {booking.notes}</p>}
-                    {booking.ownerNote && <p><strong>ملاحظة من المحل:</strong> {booking.ownerNote}</p>}
-                  </div>
-                )}
                 </div>
                 {editingBookingId === booking.id && createPortal(
                   <div className="admin-booking-modal-backdrop" role="presentation"

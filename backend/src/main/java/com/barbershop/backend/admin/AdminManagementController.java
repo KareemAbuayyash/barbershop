@@ -77,21 +77,23 @@ public class AdminManagementController {
 	@GetMapping("/customers")
 	public PageResponse<CustomerSummary> customers(
 			@RequestParam(required = false) String q,
+			@RequestParam(defaultValue = "ALL") String type,
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int size) {
-		return service.customers(q, page, size);
+		return service.customers(q, type, page, size);
 	}
 
 	@GetMapping("/customers/{id}")
-	public CustomerDetails customer(@PathVariable UUID id) {
-		return service.customer(id);
+	public CustomerDetails customer(@PathVariable UUID id, @RequestParam(required = false) String type) {
+		return service.customer(id, type);
 	}
 
 	@PutMapping("/customers/{id}")
 	public CustomerDetails updateCustomer(
 			@PathVariable UUID id,
+			@RequestParam(required = false) String type,
 			@Valid @RequestBody CustomerUpdateRequest request) {
-		return service.updateCustomer(id, request);
+		return service.updateCustomer(id, type, request);
 	}
 
 	@PutMapping("/customers/{id}/accounts/{accountId}/password")
@@ -99,8 +101,9 @@ public class AdminManagementController {
 	public void resetCustomerPassword(
 			@PathVariable UUID id,
 			@PathVariable UUID accountId,
+			@RequestParam(required = false) String type,
 			@Valid @RequestBody CustomerPasswordRequest request) {
-		service.resetCustomerPassword(id, accountId, request);
+		service.resetCustomerPassword(id, type, accountId, request);
 	}
 
 	@GetMapping("/payments")

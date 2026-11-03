@@ -68,42 +68,53 @@ public class AdminManagementService {
 	private static final List<String> MOVEMENT_TYPES = List.of("PURCHASE", "CONSUMPTION", "SALE", "ADJUSTMENT");
 	private static final List<String> EMPLOYEE_PAYMENT_TYPES = List.of("SALARY", "COMMISSION", "ADVANCE", "OTHER");
 	private static final String CUSTOMER_GROUPS = """
-			WITH customer_keys AS (
+			WITH guest_customers AS (
 			    SELECT c.id, c.name, c.phone_number,
 			           CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
-			                THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
-			                ELSE 'id:' || c.id::text END AS group_key
+			                THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+			                ELSE 'guest:id:' || c.id::text END AS group_key
 			    FROM customers c
+			    WHERE EXISTS (SELECT 1 FROM bookings b WHERE b.customer_id = c.id AND b.customer_account_id IS NULL)
 			),
 			customer_groups AS (
-			    SELECT group_key, (array_agg(id ORDER BY id))[1] AS id,
-			           max(name) AS name, max(phone_number) AS phone_number
-			    FROM customer_keys GROUP BY group_key
+			    SELECT 'account:' || a.id::text AS group_key, a.id,
+			           a.display_name AS name, a.phone_number, TRUE AS has_account
+			    FROM customer_accounts a
+			    UNION ALL
+			    SELECT gc.group_key, (array_agg(gc.id ORDER BY gc.id))[1] AS id,
+			           max(gc.name) AS name, max(gc.phone_number) AS phone_number, FALSE AS has_account
+			    FROM guest_customers gc
+			    GROUP BY gc.group_key
+			),
+			booking_identities AS (
+			    SELECT b.id AS booking_id,
+			           CASE WHEN b.customer_account_id IS NOT NULL THEN 'account:' || b.customer_account_id::text
+			                WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+			                THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+			                ELSE 'guest:id:' || c.id::text END AS group_key
+			    FROM bookings b JOIN customers c ON c.id = b.customer_id
 			),
 			booking_totals AS (
-			    SELECT c.group_key, count(DISTINCT CASE WHEN b.status = 'COMPLETED' THEN b.id END) AS visits,
-			           coalesce(sum(CASE WHEN b.status = 'COMPLETED' THEN b.service_price_snapshot ELSE 0 END), 0) AS service_value
-			    FROM customer_keys c JOIN bookings b ON b.customer_id = c.id
-			    GROUP BY c.group_key
+			    SELECT bi.group_key, count(DISTINCT CASE WHEN b.status = 'COMPLETED' THEN b.id END) AS visits
+			    FROM booking_identities bi JOIN bookings b ON b.id = bi.booking_id
+			    GROUP BY bi.group_key
 			),
 			payment_totals AS (
-			    SELECT c.group_key, coalesce(sum(p.amount), 0) AS total_paid
-			    FROM customer_keys c JOIN booking_payments p ON p.customer_id = c.id
-			    GROUP BY c.group_key
+			    SELECT bi.group_key, coalesce(sum(p.amount), 0) AS total_paid
+			    FROM booking_identities bi JOIN booking_payments p ON p.booking_id = bi.booking_id
+			    GROUP BY bi.group_key
 			),
 			debt_totals AS (
-			    SELECT c.group_key,
+			    SELECT bi.group_key,
 			           coalesce(sum(GREATEST(
 			               b.service_price_snapshot + coalesce(ri.retail_total, 0) - coalesce(bp.paid, 0), 0)), 0) AS debt
-			    FROM customer_keys c
-			    JOIN bookings b ON b.customer_id = c.id AND b.status = 'COMPLETED'
+			    FROM booking_identities bi
+			    JOIN bookings b ON b.id = bi.booking_id AND b.status = 'COMPLETED'
 			    LEFT JOIN (SELECT booking_id, sum(amount) AS paid FROM booking_payments GROUP BY booking_id) bp
 			      ON bp.booking_id = b.id
-			    LEFT JOIN (
-			        SELECT booking_id, sum(line_total) AS retail_total
-			        FROM booking_retail_items GROUP BY booking_id
-			    ) ri ON ri.booking_id = b.id
-			    GROUP BY c.group_key
+			    LEFT JOIN (SELECT booking_id, sum(line_total) AS retail_total
+			               FROM booking_retail_items GROUP BY booking_id) ri ON ri.booking_id = b.id
+			    GROUP BY bi.group_key
 			)
 			""";
 
@@ -113,7 +124,8 @@ public class AdminManagementService {
 			rs.getString("phone_number"),
 			rs.getLong("visits"),
 			rs.getBigDecimal("total_paid"),
-			rs.getBigDecimal("debt"));
+			rs.getBigDecimal("debt"),
+			rs.getBoolean("has_account"));
 	private static final RowMapper<Payment> PAYMENT_ROW = (rs, row) -> new Payment(
 			rs.getObject("id", UUID.class),
 			rs.getObject("booking_id", UUID.class),
@@ -199,42 +211,42 @@ public class AdminManagementService {
 	}
 
 	@Transactional(readOnly = true)
-	public PageResponse<CustomerSummary> customers(String query, int page, int size) {
+	public PageResponse<CustomerSummary> customers(String query, String type, int page, int size) {
 		validatePage(page, size);
+		if (!List.of("ALL", "ACCOUNTS", "GUESTS").contains(type)) {
+			throw badRequest("Unsupported customer type filter.");
+		}
 		String pattern = "%" + escapeLike(query == null ? "" : query.trim().toLowerCase(Locale.ROOT)) + "%";
 		String base = CUSTOMER_GROUPS + """
 				SELECT g.id, g.name, g.phone_number,
 				       coalesce(bt.visits, 0) visits,
 				       coalesce(pt.total_paid, 0) total_paid,
-				       coalesce(dt.debt, 0) debt
+				       coalesce(dt.debt, 0) debt, g.has_account
 				FROM customer_groups g
 				LEFT JOIN booking_totals bt ON bt.group_key = g.group_key
 				LEFT JOIN payment_totals pt ON pt.group_key = g.group_key
 				LEFT JOIN debt_totals dt ON dt.group_key = g.group_key
 				WHERE (? = '%%' OR lower(g.name) LIKE ? OR coalesce(g.phone_number, '') LIKE ?)
+				  AND (? = 'ALL' OR (? = 'ACCOUNTS' AND g.has_account) OR (? = 'GUESTS' AND NOT g.has_account))
 				""";
 		long total = jdbc.queryForObject(CUSTOMER_GROUPS + """
 				SELECT count(*) FROM customer_groups
 				WHERE (? = '%%' OR lower(name) LIKE ? OR coalesce(phone_number, '') LIKE ?)
-				""", Long.class, pattern, pattern, pattern);
+				  AND (? = 'ALL' OR (? = 'ACCOUNTS' AND has_account) OR (? = 'GUESTS' AND NOT has_account))
+				""", Long.class, pattern, pattern, pattern, type, type, type);
 		List<CustomerSummary> content = jdbc.query(
 				base + " ORDER BY g.name, g.id LIMIT ? OFFSET ?",
 				CUSTOMER_ROW,
-				pattern, pattern, pattern, size, page * size);
+				pattern, pattern, pattern, type, type, type, size, page * size);
 		return page(content, page, size, total);
 	}
 
 	@Transactional(readOnly = true)
-	public CustomerDetails customer(UUID id) {
-		String groupKey = queryString("""
-				SELECT CASE WHEN regexp_replace(coalesce(phone_number, ''), '[^0-9]', '', 'g') <> ''
-				            THEN 'phone:' || regexp_replace(phone_number, '[^0-9]', '', 'g')
-				            ELSE 'id:' || id::text END
-				FROM customers WHERE id = ?
-				""", id);
+	public CustomerDetails customer(UUID id, String type) {
+		String groupKey = customerGroupKey(id, type);
 		CustomerSummary summary = jdbc.queryForObject(CUSTOMER_GROUPS + """
 				SELECT g.id, g.name, g.phone_number, coalesce(bt.visits, 0) visits,
-				       coalesce(pt.total_paid, 0) total_paid, coalesce(dt.debt, 0) debt
+				       coalesce(pt.total_paid, 0) total_paid, coalesce(dt.debt, 0) debt, g.has_account
 				FROM customer_groups g
 				LEFT JOIN booking_totals bt ON bt.group_key = g.group_key
 				LEFT JOIN payment_totals pt ON pt.group_key = g.group_key
@@ -247,9 +259,10 @@ public class AdminManagementService {
 				       ri.quantity, ri.unit_price, ri.line_total
 				FROM booking_retail_items ri JOIN bookings b ON b.id = ri.booking_id
 				JOIN customers c ON c.id = b.customer_id
-				WHERE CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
-				           THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
-				           ELSE 'id:' || c.id::text END = ?
+				WHERE CASE WHEN b.customer_account_id IS NOT NULL THEN 'account:' || b.customer_account_id::text
+				           WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'guest:id:' || c.id::text END = ?
 				ORDER BY ri.created_at, ri.id
 				""", (org.springframework.jdbc.core.RowCallbackHandler) rs -> retailItemsByBooking
 				.computeIfAbsent(rs.getObject("booking_id", UUID.class), ignored -> new java.util.ArrayList<>())
@@ -258,9 +271,10 @@ public class AdminManagementService {
 		List<CustomerBooking> bookings = jdbc.query("""
 				SELECT b.id, b.service_name_snapshot, b.service_price_snapshot, b.status, b.created_at
 				FROM bookings b JOIN customers c ON c.id = b.customer_id
-				WHERE CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
-				           THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
-				           ELSE 'id:' || c.id::text END = ?
+				WHERE CASE WHEN b.customer_account_id IS NOT NULL THEN 'account:' || b.customer_account_id::text
+				           WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'guest:id:' || c.id::text END = ?
 				ORDER BY b.created_at DESC
 				""", (rs, row) -> {
 					UUID bookingId = rs.getObject("id", UUID.class);
@@ -276,11 +290,7 @@ public class AdminManagementService {
 		List<CustomerAccountSummary> accounts = jdbc.query("""
 				SELECT DISTINCT a.id, a.username_normalized, a.display_name, a.phone_number
 				FROM customer_accounts a
-				JOIN bookings b ON b.customer_account_id = a.id
-				JOIN customers c ON c.id = b.customer_id
-				WHERE CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
-				           THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
-				           ELSE 'id:' || c.id::text END = ?
+				WHERE 'account:' || a.id::text = ?
 				ORDER BY a.username_normalized
 				""", (rs, row) -> new CustomerAccountSummary(
 						rs.getObject("id", UUID.class), rs.getString("username_normalized"),
@@ -289,34 +299,29 @@ public class AdminManagementService {
 	}
 
 	@Transactional
-	public CustomerDetails updateCustomer(UUID id, CustomerUpdateRequest request) {
-		String groupKey = customerGroupKey(id);
+	public CustomerDetails updateCustomer(UUID id, String type, CustomerUpdateRequest request) {
+		String groupKey = customerGroupKey(id, type);
 		String name = request.name().trim();
 		if (name.length() < 2) throw badRequest("Customer name must contain at least 2 characters.");
 		String phone = trimToNull(request.phoneNumber());
 		jdbc.update("""
 				UPDATE customer_accounts SET display_name = ?, phone_number = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE id IN (
-				    SELECT DISTINCT b.customer_account_id
-				    FROM bookings b JOIN customers c ON c.id = b.customer_id
-				    WHERE b.customer_account_id IS NOT NULL
-				      AND CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
-				               THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
-				               ELSE 'id:' || c.id::text END = ?
-				)
+				WHERE 'account:' || id::text = ?
 				""", name, phone == null ? "" : phone, groupKey);
 		jdbc.update("""
 				UPDATE customers SET name = ?, phone_number = ?
-				WHERE CASE WHEN regexp_replace(coalesce(phone_number, ''), '[^0-9]', '', 'g') <> ''
-				           THEN 'phone:' || regexp_replace(phone_number, '[^0-9]', '', 'g')
-				           ELSE 'id:' || id::text END = ?
-				""", name, phone, groupKey);
-		return customer(id);
+				WHERE ? LIKE 'guest:%'
+				  AND CASE WHEN regexp_replace(coalesce(phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(phone_number, '[^0-9]', '', 'g')
+				           ELSE 'guest:id:' || id::text END = ?
+				  AND EXISTS (SELECT 1 FROM bookings b WHERE b.customer_id = customers.id AND b.customer_account_id IS NULL)
+				""", name, phone, groupKey, groupKey);
+		return customer(id, type);
 	}
 
 	@Transactional
-	public void resetCustomerPassword(UUID customerId, UUID accountId, CustomerPasswordRequest request) {
-		String groupKey = customerGroupKey(customerId);
+	public void resetCustomerPassword(UUID customerId, String type, UUID accountId, CustomerPasswordRequest request) {
+		String groupKey = customerGroupKey(customerId, type);
 		int bytes = request.newPassword().getBytes(StandardCharsets.UTF_8).length;
 		if (bytes < 8 || bytes > 72) {
 			throw badRequest("Password must contain 8-72 UTF-8 bytes.");
@@ -324,14 +329,8 @@ public class AdminManagementService {
 		int updated = jdbc.update("""
 				UPDATE customer_accounts
 				SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE id = ? AND id IN (
-				    SELECT DISTINCT b.customer_account_id
-				    FROM bookings b JOIN customers c ON c.id = b.customer_id
-				    WHERE CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
-				               THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
-				               ELSE 'id:' || c.id::text END = ?
-				)
-				""", passwordEncoder.encode(request.newPassword()), accountId, groupKey);
+				WHERE id = ? AND ? = 'ACCOUNTS' AND 'account:' || id::text = ?
+			""", passwordEncoder.encode(request.newPassword()), accountId, type, groupKey);
 		if (updated == 0) throw notFound("Customer account not found.");
 	}
 
@@ -409,7 +408,7 @@ public class AdminManagementService {
 		Map<String, Object> booking;
 		try {
 			booking = jdbc.queryForMap("""
-					SELECT b.status, b.service_price_snapshot, b.employee_id, c.id customer_id
+					SELECT b.status, b.service_price_snapshot, b.employee_id, c.id customer_id, b.queue_date
 					FROM bookings b JOIN customers c ON c.id = b.customer_id
 					WHERE b.id = ? FOR UPDATE OF b
 					""", bookingId);
@@ -478,7 +477,27 @@ public class AdminManagementService {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Payment exceeds the outstanding checkout balance.");
 		}
 
-		jdbc.update("UPDATE bookings SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = ?", bookingId);
+		Object queueDateValue = booking.get("queue_date");
+		LocalDate queueDate = queueDateValue instanceof java.sql.Date sqlDate
+				? sqlDate.toLocalDate()
+				: queueDateValue instanceof LocalDate date ? date : null;
+		if (queueDate != null) jdbc.execute("SET CONSTRAINTS uq_bookings_queue_date_position DEFERRED");
+		jdbc.update("UPDATE bookings SET status = 'COMPLETED', queue_position = CASE WHEN queue_date IS NULL THEN queue_position ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE id = ?", bookingId);
+		if (queueDate != null) {
+			jdbc.update("""
+					WITH numbered AS (
+					    SELECT id, row_number() OVER (ORDER BY queue_position, created_at, id)::INTEGER position
+					    FROM bookings WHERE queue_date = ? AND status IN ('PENDING', 'CONFIRMED')
+					)
+					UPDATE bookings b SET queue_position = numbered.position
+					FROM numbered WHERE b.id = numbered.id
+					""", queueDate);
+			jdbc.update("UPDATE booking_queue_counters SET last_position = (SELECT count(*) FROM bookings WHERE queue_date = ? AND status IN ('PENDING', 'CONFIRMED')), updated_at = CURRENT_TIMESTAMP WHERE queue_date = ?",
+				queueDate, queueDate);
+			List<UUID> approaching = jdbc.query("SELECT id FROM bookings WHERE queue_date = ? AND status IN ('PENDING', 'CONFIRMED') AND queue_position <= 2",
+				(rs, row) -> rs.getObject("id", UUID.class), queueDate);
+			approaching.forEach(notificationService::notifyQueueApproaching);
+		}
 		if (request.amount().signum() > 0) {
 			UUID paymentId = UUID.randomUUID();
 			jdbc.update("""
@@ -1034,10 +1053,12 @@ public class AdminManagementService {
 	private List<Payment> paymentsForGroup(String groupKey) {
 		return jdbc.query("""
 				SELECT p.id, p.booking_id, c.name customer_name, p.amount, p.method, p.notes, p.paid_at
-				FROM booking_payments p JOIN customers c ON c.id = p.customer_id
-				WHERE CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
-				           THEN 'phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
-				           ELSE 'id:' || c.id::text END = ?
+				FROM booking_payments p JOIN bookings b ON b.id = p.booking_id
+				JOIN customers c ON c.id = b.customer_id
+				WHERE CASE WHEN b.customer_account_id IS NOT NULL THEN 'account:' || b.customer_account_id::text
+				           WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				           THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+				           ELSE 'guest:id:' || c.id::text END = ?
 				ORDER BY p.paid_at DESC
 				""", PAYMENT_ROW, groupKey);
 	}
@@ -1122,13 +1143,23 @@ public class AdminManagementService {
 		}
 	}
 
-	private String customerGroupKey(UUID id) {
+	private String customerGroupKey(UUID id, String type) {
 		return queryString("""
-				SELECT CASE WHEN regexp_replace(coalesce(phone_number, ''), '[^0-9]', '', 'g') <> ''
-				            THEN 'phone:' || regexp_replace(phone_number, '[^0-9]', '', 'g')
-				            ELSE 'id:' || id::text END
-				FROM customers WHERE id = ?
-				""", id);
+				SELECT group_key FROM (
+				    SELECT 'account:' || a.id::text AS group_key, 'ACCOUNTS' AS customer_type
+				    FROM customer_accounts a WHERE a.id = ?
+				    UNION ALL
+				    SELECT CASE WHEN regexp_replace(coalesce(c.phone_number, ''), '[^0-9]', '', 'g') <> ''
+				                THEN 'guest:phone:' || regexp_replace(c.phone_number, '[^0-9]', '', 'g')
+				                ELSE 'guest:id:' || c.id::text END, 'GUESTS' AS customer_type
+				    FROM customers c WHERE c.id = ? AND EXISTS (
+				        SELECT 1 FROM bookings b WHERE b.customer_id = c.id AND b.customer_account_id IS NULL
+				    )
+				) customer_identity
+				WHERE (? IS NULL OR customer_type = ?)
+				ORDER BY CASE WHEN customer_type = 'ACCOUNTS' THEN 0 ELSE 1 END
+				LIMIT 1
+				""", id, id, type, type);
 	}
 
 	private static <T> PageResponse<T> page(List<T> content, int page, int size, long total) {

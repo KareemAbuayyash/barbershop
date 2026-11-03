@@ -168,8 +168,14 @@ public class BookingManagementService {
 			throw conflict("Booking cannot be cancelled", "Only pending or confirmed bookings can be cancelled.");
 		}
 		BookingStatus previousStatus = booking.getStatus();
+		LocalDate queueDate = booking.getQueueDate();
+		if (queueDate != null) {
+			jdbcTemplate.execute("SET CONSTRAINTS uq_bookings_queue_date_position DEFERRED");
+			booking.setQueuePosition(null);
+		}
 		booking.setStatus(BookingStatus.CANCELLED);
 		Booking saved = bookingRepository.saveAndFlush(booking);
+		if (queueDate != null) compactQueue(queueDate);
 		if (previousStatus == BookingStatus.PENDING) {
 			notificationService.notifyBookingRejected(saved.getId());
 		} else {
@@ -289,12 +295,6 @@ public class BookingManagementService {
 					"The ordered IDs must include every active booking for the selected date, and no other bookings.");
 		}
 
-		Integer maximumPosition = bookingRepository.findMaximumQueuePosition(request.date());
-		long nextPosition = maximumPosition == null ? 1L : (long) maximumPosition + 1L;
-		if (nextPosition + request.bookingIds().size() - 1L > Integer.MAX_VALUE) {
-			throw conflict("Queue cannot be reordered", "The queue position limit has been reached.");
-		}
-
 		jdbcTemplate.execute("SET CONSTRAINTS uq_bookings_queue_date_position DEFERRED");
 		Map<UUID, Booking> activeBookingsById = activeBookings.stream()
 				.collect(java.util.stream.Collectors.toMap(Booking::getId, booking -> booking));
@@ -302,22 +302,38 @@ public class BookingManagementService {
 				.map(activeBookingsById::get)
 				.toList();
 		for (int index = 0; index < ordered.size(); index++) {
-			ordered.get(index).setQueuePosition(Math.toIntExact(nextPosition + index));
+			ordered.get(index).setQueuePosition(index + 1);
 		}
 		bookingRepository.flush();
 
 		if (!ordered.isEmpty()) {
 			jdbcTemplate.update("""
 					UPDATE booking_queue_counters
-					SET last_position = GREATEST(last_position, ?),
+					SET last_position = ?,
 					    updated_at = CURRENT_TIMESTAMP
 					WHERE queue_date = ?
 					""",
-					Math.toIntExact(nextPosition + ordered.size() - 1L),
+				ordered.size(),
 					request.date());
 		}
 		ordered.forEach(booking -> notificationService.notifyQueueUpdated(booking.getId()));
 		return ordered.stream().map(BookingManagementService::toResponse).toList();
+	}
+
+	private void compactQueue(LocalDate date) {
+		List<Booking> active = bookingRepository.findQueueBookingsForUpdate(date, ACTIVE_QUEUE_STATUSES);
+		for (int index = 0; index < active.size(); index++) {
+			active.get(index).setQueuePosition(index + 1);
+		}
+		bookingRepository.flush();
+		jdbcTemplate.update("UPDATE booking_queue_counters SET last_position = ?, updated_at = CURRENT_TIMESTAMP WHERE queue_date = ?",
+				active.size(), date);
+		active.forEach(booking -> {
+			notificationService.notifyQueueUpdated(booking.getId());
+			if (booking.getQueuePosition() != null && booking.getQueuePosition() <= 2) {
+				notificationService.notifyQueueApproaching(booking.getId());
+			}
+		});
 	}
 
 	private Booking findForLifecycleUpdate(UUID id) {
