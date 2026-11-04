@@ -127,4 +127,6 @@ Run backend tests from `backend/`:
 
 ## License
 
-No open-source license is specified in this repository. All rights are reserved unless a license is added.
+This project is proprietary. All rights are reserved; no permission to use,
+copy, modify, or distribute the project is granted without written permission
+from the copyright holder. See [LICENSE](LICENSE) for the full terms.
