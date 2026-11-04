@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Eye, EyeOff } from 'lucide-react'
 import AuthCard from '../components/AuthCard'
 import { useAuth } from '../useAuth'
-import { apiRequest, getErrorMessage } from '../../../lib/api'
+import { ApiError, apiRequest, getErrorMessage } from '../../../lib/api'
 import { useI18n } from '../../../lib/i18n'
 
 function LoginPage() {
@@ -14,6 +15,8 @@ function LoginPage() {
     searchParams.get('sessionExpired') === '1' ? 'انتهت الجلسة، يرجى تسجيل الدخول مجدداً.' : '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
+  const [credentialsError, setCredentialsError] = useState(false)
 
   useEffect(() => {
     if (searchParams.get('sessionExpired') === '1') {
@@ -24,6 +27,7 @@ function LoginPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setMessage('')
+    setCredentialsError(false)
     setIsSubmitting(true)
     const formData = new FormData(event.currentTarget)
 
@@ -42,7 +46,12 @@ function LoginPage() {
         { replace: true },
       )
     } catch (error) {
-      setMessage(getErrorMessage(error, 'تعذر تسجيل الدخول. حاول مرة أخرى.'))
+      if (error instanceof ApiError && error.status === 401) {
+        setCredentialsError(true)
+        setMessage('اسم المستخدم أو كلمة المرور غير صحيحة. تأكد من كتابتهما بشكل صحيح وحاول مرة أخرى.')
+      } else {
+        setMessage(getErrorMessage(error, 'تعذر تسجيل الدخول. حاول مرة أخرى.'))
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -194,13 +203,25 @@ function LoginPage() {
                 required
               />
               <label htmlFor="login-password">{t('كلمة المرور')}</label>
-              <input
-                id="login-password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
+              <div className="password-input-wrap">
+                <input
+                  id="login-password"
+                  name="password"
+                  type={showLoginPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-visibility-toggle"
+                  aria-label={t(showLoginPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور')}
+                  aria-pressed={showLoginPassword}
+                  title={t(showLoginPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور')}
+                  onClick={() => setShowLoginPassword((visible) => !visible)}
+                >
+                  {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               <label className="remember-me-option">
                 <input name="rememberMe" type="checkbox" />
                 {t('تذكرني لمدة 30 يوماً على هذا الجهاز')}
@@ -208,7 +229,7 @@ function LoginPage() {
               <button className="button button--primary form-submit" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? t('جارٍ تسجيل الدخول...') : t('تسجيل الدخول')}
               </button>
-              {message && <p className="form-message" role="alert">{message}</p>}
+              {message && <p className={`form-message${credentialsError ? ' form-message--error' : ''}`} role="alert">{t(message)}</p>}
             </form>
             <p className="auth-switch">
               {t('ليس لديك حساب؟')} <button className="text-button" type="button" onClick={toggleForm}>{t('إنشاء حساب')}</button>

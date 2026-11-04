@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router-dom'
 import './styles/globals.css'
 import { router } from './app/router'
 import CustomFormValidation from './components/ui/CustomFormValidation'
+import BackendAvailabilityNotice from './components/system/BackendAvailabilityNotice'
 import { AuthProvider } from './features/auth/AuthContext'
 import { I18nProvider } from './lib/i18n'
 
@@ -19,6 +20,7 @@ createRoot(document.getElementById('root')!).render(
     <I18nProvider>
       <AuthProvider>
         <CustomFormValidation />
+        <BackendAvailabilityNotice />
         <RouterProvider router={router} />
       </AuthProvider>
     </I18nProvider>

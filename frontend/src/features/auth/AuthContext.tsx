@@ -104,6 +104,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    const restoreSessionAfterBackendRecovery = () => {
+      void apiRequest<CurrentUser>('/api/auth/me')
+        .then((currentUser) => {
+          setUser(currentUser)
+          void associateCurrentDevicePush().catch(() => {})
+        })
+        .catch((cause: unknown) => {
+          if (cause instanceof ApiError && cause.status === 401) setUser(null)
+        })
+    }
+    window.addEventListener('barbershop:backend-online', restoreSessionAfterBackendRecovery)
+    return () => window.removeEventListener('barbershop:backend-online', restoreSessionAfterBackendRecovery)
+  }, [])
+
+  useEffect(() => {
     const handleExpiredSession = () => {
       clearCsrfToken()
       setUser(null)

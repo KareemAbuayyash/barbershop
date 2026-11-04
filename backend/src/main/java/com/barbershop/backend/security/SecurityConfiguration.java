@@ -112,6 +112,7 @@ public class SecurityConfiguration {
 						.requestMatchers(HttpMethod.GET, "/api/shop-profile").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/bookings/availability").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/health").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/bookings").permitAll()
 						.requestMatchers(HttpMethod.POST,
 								"/api/auth/login",
