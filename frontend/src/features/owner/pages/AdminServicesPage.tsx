@@ -197,7 +197,7 @@ function AdminServicesPage() {
       setImagePreview(null)
       await load()
     } catch (cause) {
-      setError(t(getErrorMessage(cause, cause instanceof Error ? cause.message : 'تعذر حفظ الخدمة.')))
+      setError(t(getErrorMessage(cause, 'تعذر حفظ الخدمة.')))
     } finally {
       setBusy(false)
     }

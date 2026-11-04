@@ -5,6 +5,7 @@ import { apiRequest, getErrorMessage } from '../../../lib/api'
 import { getShopDate } from '../../../lib/shop-time'
 import { useI18n } from '../../../lib/i18n'
 import type {
+  AdminPage,
   AdminBestSellingProduct,
   AdminBestSellingService,
   AdminBookingSalesReport,
@@ -53,6 +54,8 @@ const labels: Record<Section, { eyebrow: string; title: string }> = {
 }
 
 const reportChartColors = ['#ddc794', '#a88b55', '#806b43', '#685b40', '#4c4838']
+type ManualDebtCustomerType = 'ACCOUNTS' | 'GUESTS'
+type DebtReminderResult = { sent: boolean; reason: string | null }
 
 function ReportDonut({ values, labels, centerValue, centerLabel, label, valueUnit }: {
   values: number[]
@@ -109,6 +112,15 @@ function AdminFinancePage({ section }: { section: Section }) {
   const [customers, setCustomers] = useState<AdminCustomer[]>([])
   const [selectedCustomerDetails, setSelectedCustomerDetails] = useState<AdminCustomerDetails | null>(null)
   const [addDebtOpen, setAddDebtOpen] = useState(false)
+  const [manualDebtCustomerType, setManualDebtCustomerType] = useState<ManualDebtCustomerType>('GUESTS')
+  const [manualDebtCustomerSearch, setManualDebtCustomerSearch] = useState('')
+  const [manualDebtCustomers, setManualDebtCustomers] = useState<AdminCustomer[]>([])
+  const [manualDebtSelectedCustomer, setManualDebtSelectedCustomer] = useState<AdminCustomer | null>(null)
+  const [manualDebtNewGuest, setManualDebtNewGuest] = useState(false)
+  const [manualDebtGuestName, setManualDebtGuestName] = useState('')
+  const [manualDebtGuestPhone, setManualDebtGuestPhone] = useState('')
+  const [manualDebtCustomersLoading, setManualDebtCustomersLoading] = useState(false)
+  const [manualDebtCustomerError, setManualDebtCustomerError] = useState('')
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<AdminExpense | null>(null)
   const [payments, setPayments] = useState<AdminPayment[]>([])
@@ -129,6 +141,31 @@ function AdminFinancePage({ section }: { section: Section }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (!addDebtOpen) return
+    let active = true
+    const timeout = window.setTimeout(() => {
+      const params = new URLSearchParams({ page: '0', size: '50', type: manualDebtCustomerType })
+      if (manualDebtCustomerSearch.trim()) params.set('q', manualDebtCustomerSearch.trim())
+      setManualDebtCustomersLoading(true)
+      setManualDebtCustomerError('')
+      void apiRequest<AdminPage<AdminCustomer>>(`/api/admin/customers?${params}`)
+        .then((result) => {
+          if (active) setManualDebtCustomers(result.content)
+        })
+        .catch((cause: unknown) => {
+          if (active) setManualDebtCustomerError(getErrorMessage(cause, 'تعذر تحميل قائمة العملاء.'))
+        })
+        .finally(() => {
+          if (active) setManualDebtCustomersLoading(false)
+        })
+    }, 220)
+    return () => {
+      active = false
+      window.clearTimeout(timeout)
+    }
+  }, [addDebtOpen, manualDebtCustomerSearch, manualDebtCustomerType])
 
   useEffect(() => {
     let active = true
@@ -189,10 +226,12 @@ function AdminFinancePage({ section }: { section: Section }) {
     setError('')
     setNotice('')
     try {
-      await apiRequest(`/api/admin/debts/customers/${customerId}/reminder?type=${hasAccount ? 'ACCOUNTS' : 'GUESTS'}`, {
+      const result = await apiRequest<DebtReminderResult>(`/api/admin/debts/customers/${customerId}/reminder?type=${hasAccount ? 'ACCOUNTS' : 'GUESTS'}`, {
         method: 'POST',
       })
-      setNotice(t('تم إرسال تذكير بإجمالي المبلغ المستحق عبر الإشعارات.'))
+      setNotice(result.sent
+        ? t('تم إرسال تذكير بإجمالي المبلغ المستحق عبر الإشعارات.')
+        : t('لا يمكن إرسال إشعار لهذا الضيف لأنه لا يملك حجزاً مرتبطاً.'))
     } catch (cause) {
       setError(t(getErrorMessage(cause, 'تعذر إرسال التذكير.')))
     } finally {
@@ -200,19 +239,49 @@ function AdminFinancePage({ section }: { section: Section }) {
     }
   }
 
+  const openAddManualDebt = () => {
+    setManualDebtCustomerType('GUESTS')
+    setManualDebtCustomerSearch('')
+    setManualDebtSelectedCustomer(null)
+    setManualDebtNewGuest(false)
+    setManualDebtGuestName('')
+    setManualDebtGuestPhone('')
+    setManualDebtCustomerError('')
+    setAddDebtOpen(true)
+  }
+
   const addManualDebt = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = event.currentTarget
     const formData = new FormData(form)
+    const requiresSelection = manualDebtCustomerType === 'ACCOUNTS' || !manualDebtNewGuest
+    if (requiresSelection && !manualDebtSelectedCustomer) {
+      setManualDebtCustomerError('اختر عميلاً من القائمة قبل إضافة الدين.')
+      return
+    }
+    const customerName = manualDebtCustomerType === 'ACCOUNTS'
+      ? manualDebtSelectedCustomer?.name ?? ''
+      : manualDebtSelectedCustomer?.name ?? manualDebtGuestName.trim()
+    const phoneNumber = manualDebtCustomerType === 'ACCOUNTS'
+      ? manualDebtSelectedCustomer?.phoneNumber ?? ''
+      : manualDebtGuestPhone.trim()
+    if (!customerName || (manualDebtCustomerType === 'GUESTS' && !phoneNumber)) {
+      setManualDebtCustomerError('أدخل اسم الضيف ورقم هاتفه.')
+      return
+    }
     setBusy(true)
     setError('')
     setNotice('')
+    setManualDebtCustomerError('')
     try {
       await apiRequest('/api/admin/manual-debts', {
         method: 'POST',
         body: JSON.stringify({
-          customerName: String(formData.get('customerName')).trim(),
-          phoneNumber: String(formData.get('phoneNumber')).trim(),
+          customerAccountId: manualDebtCustomerType === 'ACCOUNTS'
+            ? manualDebtSelectedCustomer?.id
+            : null,
+          customerName,
+          phoneNumber,
           description: String(formData.get('description')).trim(),
           amount: Number(formData.get('amount')),
         }),
@@ -221,6 +290,10 @@ function AdminFinancePage({ section }: { section: Section }) {
       setAddDebtOpen(false)
       setNotice(t('تمت إضافة الدين إلى حساب العميل.'))
       setRefreshKey((value) => value + 1)
+      setManualDebtSelectedCustomer(null)
+      setManualDebtNewGuest(false)
+      setManualDebtGuestName('')
+      setManualDebtGuestPhone('')
     } catch (cause) {
       setError(t(getErrorMessage(cause, 'تعذر إضافة الدين.')))
     } finally {
@@ -360,7 +433,7 @@ function AdminFinancePage({ section }: { section: Section }) {
         {section === 'accounts' && (
           <>
             <button className="admin-secondary-button admin-add-debt-trigger" type="button"
-              onClick={() => setAddDebtOpen(true)}><Plus size={15} /> {language === 'ar' ? 'إضافة دين يدوي' : 'Add manual debt'}</button>
+              onClick={openAddManualDebt}><Plus size={15} /> {language === 'ar' ? 'إضافة دين يدوي' : 'Add manual debt'}</button>
             <div className="admin-summary-chips">
               <span>{customers.length.toLocaleString(language)} {t('عميل')}</span>
               <span>{indebtedCustomers.length.toLocaleString(language)} {t('عميل عليه دين')}</span>
@@ -589,8 +662,88 @@ function AdminFinancePage({ section }: { section: Section }) {
                 onClick={() => setAddDebtOpen(false)}><X size={17} /></button>
             </div>
             <form className="admin-form admin-manual-debt-form" onSubmit={(event) => void addManualDebt(event)}>
-              <label>{t('اسم العميل')}<input name="customerName" maxLength={150} required /></label>
-              <label>{t('رقم الهاتف')}<input name="phoneNumber" type="tel" maxLength={32} required /></label>
+              <div className="admin-manual-debt-customer-picker">
+                <span className="admin-manual-debt-label">{t('نوع العميل')}</span>
+                <div className="admin-manual-debt-type-switch" role="group" aria-label={t('نوع العميل')}>
+                  <button type="button" aria-pressed={manualDebtCustomerType === 'GUESTS'}
+                    className={manualDebtCustomerType === 'GUESTS' ? 'is-active' : ''}
+                    onClick={() => {
+                      setManualDebtCustomerType('GUESTS')
+                      setManualDebtSelectedCustomer(null)
+                      setManualDebtNewGuest(false)
+                      setManualDebtCustomerSearch('')
+                      setManualDebtCustomerError('')
+                    }}>{t('ضيف')}</button>
+                  <button type="button" aria-pressed={manualDebtCustomerType === 'ACCOUNTS'}
+                    className={manualDebtCustomerType === 'ACCOUNTS' ? 'is-active' : ''}
+                    onClick={() => {
+                      setManualDebtCustomerType('ACCOUNTS')
+                      setManualDebtSelectedCustomer(null)
+                      setManualDebtNewGuest(false)
+                      setManualDebtCustomerSearch('')
+                      setManualDebtCustomerError('')
+                    }}>{t('لديه حساب')}</button>
+                </div>
+                <label className="admin-manual-debt-search">{t('ابحث بالاسم أو رقم الهاتف')}
+                  <input type="search" value={manualDebtCustomerSearch} maxLength={150}
+                    placeholder={t('اكتب اسم العميل أو رقم الهاتف')}
+                    onChange={(event) => setManualDebtCustomerSearch(event.target.value)} />
+                </label>
+                <div className="admin-manual-debt-customer-results" role="listbox" aria-label={t('العملاء')}>
+                  {manualDebtCustomers.map((customer) => (
+                    <button type="button" role="option" aria-selected={manualDebtSelectedCustomer?.id === customer.id}
+                      className={manualDebtSelectedCustomer?.id === customer.id ? 'is-selected' : ''}
+                      key={customer.id}
+                      onClick={() => {
+                        setManualDebtSelectedCustomer(customer)
+                        setManualDebtNewGuest(false)
+                        setManualDebtGuestName(customer.name)
+                        setManualDebtGuestPhone(customer.phoneNumber ?? '')
+                        setManualDebtCustomerError('')
+                      }}>
+                      <span><strong>{customer.name}</strong>
+                        <small dir="ltr">{customer.phoneNumber || t('لا يوجد رقم هاتف')}</small></span>
+                      <span className="admin-manual-debt-customer-tag">{t(customer.hasAccount ? 'حساب مسجل' : 'ضيف')}</span>
+                    </button>
+                  ))}
+                  {manualDebtCustomersLoading && <p className="admin-empty-inline">{t('جارٍ تحميل العملاء...')}</p>}
+                  {!manualDebtCustomersLoading && !manualDebtCustomers.length
+                    && <p className="admin-empty-inline">{t('لا توجد نتائج مطابقة.')}</p>}
+                </div>
+                {manualDebtCustomerType === 'GUESTS' && (
+                  <button type="button" className="admin-secondary-button admin-manual-debt-new-guest"
+                    onClick={() => {
+                      setManualDebtSelectedCustomer(null)
+                      setManualDebtNewGuest((current) => !current)
+                      setManualDebtGuestName('')
+                      setManualDebtGuestPhone('')
+                      setManualDebtCustomerError('')
+                    }}>{manualDebtNewGuest ? t('اختيار ضيف من القائمة') : t('إضافة ضيف جديد')}</button>
+                )}
+                {manualDebtCustomerType === 'ACCOUNTS' && manualDebtSelectedCustomer && (
+                  <div className="admin-manual-debt-selected">
+                    <strong>{manualDebtSelectedCustomer.name}</strong>
+                    <span dir="ltr">{manualDebtSelectedCustomer.phoneNumber || '—'}</span>
+                  </div>
+                )}
+                {manualDebtCustomerType === 'GUESTS' && manualDebtNewGuest && (
+                  <div className="admin-manual-debt-guest-fields">
+                    <label>{t('اسم الضيف')}<input value={manualDebtGuestName} maxLength={150} required
+                      onChange={(event) => setManualDebtGuestName(event.target.value)} /></label>
+                    <label>{t('رقم هاتف الضيف')}<input value={manualDebtGuestPhone} type="tel" maxLength={32} required
+                      onChange={(event) => setManualDebtGuestPhone(event.target.value)} /></label>
+                  </div>
+                )}
+                {manualDebtCustomerType === 'GUESTS' && !manualDebtNewGuest && manualDebtSelectedCustomer && (
+                  <div className="admin-manual-debt-selected">
+                    <strong>{manualDebtSelectedCustomer.name}</strong>
+                    <label>{t('رقم هاتف الضيف')}<input value={manualDebtGuestPhone} type="tel" maxLength={32} required
+                      onChange={(event) => setManualDebtGuestPhone(event.target.value)} /></label>
+                  </div>
+                )}
+                {manualDebtCustomerError && <p className="admin-message admin-message--error" role="alert">
+                  {t(manualDebtCustomerError)}</p>}
+              </div>
               <label>{t('سبب الدين')}<input name="description" maxLength={500} placeholder={t('خدمة، منتج، أو سبب آخر')} required /></label>
               <label>{t('المبلغ (₪)')}<input name="amount" type="number" min="0.01" step="0.01" required /></label>
               <button className="admin-primary-button" disabled={busy}>

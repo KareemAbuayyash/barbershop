@@ -100,8 +100,9 @@ public final class AdminDtos {
 	}
 
 	public record ManualDebtRequest(
+			UUID customerAccountId,
 			@NotBlank @Size(max = 150) String customerName,
-			@NotBlank @Size(max = 32) String phoneNumber,
+			@Size(max = 32) String phoneNumber,
 			@NotBlank @Size(max = 500) String description,
 			@NotNull @DecimalMin(value = "0.01") BigDecimal amount) {
 	}

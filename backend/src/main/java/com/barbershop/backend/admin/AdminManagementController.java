@@ -145,11 +145,10 @@ public class AdminManagementController {
 	}
 
 	@PostMapping("/debts/customers/{customerId}/reminder")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void sendCustomerDebtReminder(
+	public AdminManagementService.DebtReminderResult sendCustomerDebtReminder(
 			@PathVariable UUID customerId,
 			@RequestParam String type) {
-		service.sendDebtReminder(customerId, type);
+		return service.sendDebtReminder(customerId, type);
 	}
 
 	@PostMapping("/debts/customers/{customerId}/payments")

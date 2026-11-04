@@ -107,12 +107,12 @@ let csrfToken: string | undefined
 let csrfHeaderName = 'X-CSRF-TOKEN'
 
 async function readError(response: Response): Promise<ApiError> {
-  let message = `Request failed (${response.status})`
+  let message = 'تعذر إكمال الطلب. حاول مرة أخرى.'
   const contentType = response.headers.get('content-type') ?? ''
 
   if (contentType.includes('json')) {
-    const body = await response.json() as ApiErrorBody
-    message = body.detail || body.title || message
+    const body = await response.json().catch(() => undefined) as ApiErrorBody | undefined
+    message = body?.detail || body?.title || message
   }
 
   return new ApiError(message, response.status, response.headers.get('Retry-After') ?? undefined)
@@ -225,11 +225,20 @@ export function getErrorMessage(error: unknown, fallback: string): string {
       if (error.message.toLowerCase().includes('csrf')) {
         return 'انتهت صلاحية رمز الحماية. حدّث الصفحة ثم أعد تسجيل الدخول.'
       }
-      return error.message === 'Access is denied.'
-        ? 'الخادم رفض العملية. أعد تحميل الصفحة، وإذا استمر الخطأ أعد تسجيل الدخول.'
-        : error.message
+      return 'ليست لديك صلاحية لإجراء هذه العملية.'
     }
-    return error.message
+    if (error.status === 400 || error.status === 422) {
+      return 'البيانات المدخلة غير مكتملة أو غير صحيحة. راجع الحقول وحاول مجدداً.'
+    }
+    if (error.status === 404) return 'لم نعثر على البيانات المطلوبة. حدّث الصفحة وحاول مرة أخرى.'
+    if (error.status === 409) {
+      return 'لا يمكن إتمام العملية بهذه البيانات حالياً. حدّث الصفحة وتحقق من حالة الحساب أو الرصيد.'
+    }
+    if (error.status === 413) return 'حجم الملف أكبر من المسموح. اختر صورة أصغر ثم حاول مجدداً.'
+    if (error.status === 415) return 'نوع الملف غير مدعوم. اختر ملفاً بصيغة أخرى.'
+    if (error.status === 429) return 'وصلت إلى حد المحاولات المسموح. انتظر قليلاً ثم حاول مجدداً.'
+    if (error.status >= 500) return 'حدث خلل مؤقت في الخادم. حاول مرة أخرى بعد قليل.'
+    return 'تعذر إكمال الطلب. تحقق من البيانات وحاول مرة أخرى.'
   }
-  return fallback
+  return fallback || 'تعذر إكمال الطلب. حاول مرة أخرى.'
 }

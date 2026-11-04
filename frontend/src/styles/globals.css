@@ -3440,6 +3440,143 @@ form [aria-invalid="true"] {
   grid-column: 1 / -1;
 }
 
+.admin-manual-debt-customer-picker {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-manual-debt-label {
+  color: #c7c1b4;
+  font-size: 11px;
+}
+
+.admin-manual-debt-type-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.admin-manual-debt-type-switch button {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.admin-manual-debt-type-switch button.is-active {
+  border-color: rgba(195, 166, 107, 0.34);
+  color: var(--color-gold-light);
+  background: rgba(195, 166, 107, 0.1);
+}
+
+.admin-manual-debt-search {
+  display: grid;
+  gap: 6px;
+  color: #c7c1b4;
+  font-size: 11px;
+}
+
+.admin-manual-debt-customer-results {
+  display: grid;
+  max-height: 210px;
+  gap: 6px;
+  overflow: auto;
+  padding: 2px;
+  overscroll-behavior: contain;
+}
+
+.admin-manual-debt-customer-results > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 53px;
+  padding: 9px 11px;
+  border: 1px solid var(--admin-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: rgba(0, 0, 0, 0.12);
+  text-align: start;
+  cursor: pointer;
+}
+
+.admin-manual-debt-customer-results > button:hover,
+.admin-manual-debt-customer-results > button.is-selected {
+  border-color: rgba(195, 166, 107, 0.52);
+  background: rgba(195, 166, 107, 0.08);
+}
+
+.admin-manual-debt-customer-results > button > span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-manual-debt-customer-results small {
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+.admin-manual-debt-customer-tag {
+  flex: 0 0 auto;
+  color: var(--color-gold-light);
+  font-size: 10px;
+}
+
+.admin-manual-debt-new-guest {
+  justify-self: start;
+}
+
+.admin-manual-debt-selected,
+.admin-manual-debt-guest-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.admin-manual-debt-selected > strong {
+  align-self: center;
+  color: var(--color-gold-light);
+}
+
+.admin-manual-debt-selected > span {
+  align-self: center;
+  color: var(--color-muted);
+  text-align: end;
+}
+
+.admin-manual-debt-selected label,
+.admin-manual-debt-guest-fields label {
+  display: grid;
+  gap: 6px;
+  color: #c7c1b4;
+  font-size: 11px;
+}
+
+@media (max-width: 620px) {
+  .admin-manual-debt-selected,
+  .admin-manual-debt-guest-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-manual-debt-selected > span {
+    text-align: start;
+  }
+}
+
 .admin-form textarea,
 .admin-settings-section textarea {
   min-height: 86px;

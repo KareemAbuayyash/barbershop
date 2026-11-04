@@ -565,22 +565,31 @@ public class AdminManagementService {
 
 	@Transactional
 	public ManualCustomerDebt addManualCustomerDebt(ManualDebtRequest request, String actor) {
-		String name = request.customerName().trim();
-		String phone = request.phoneNumber().trim();
-		String digits = phone.replaceAll("[^0-9]", "");
-		if (name.length() < 2 || digits.isBlank()) throw badRequest("Enter a valid customer name and phone number.");
+		String name;
+		String phone;
+		if (request.customerAccountId() != null) {
+			List<String[]> selectedAccounts = jdbc.query("""
+					SELECT display_name, phone_number FROM customer_accounts WHERE id = ? AND enabled = TRUE
+					""", (rs, row) -> new String[] { rs.getString("display_name"), rs.getString("phone_number") },
+				request.customerAccountId());
+			if (selectedAccounts.isEmpty()) throw notFound("Selected customer account was not found.");
+			name = selectedAccounts.getFirst()[0];
+			phone = selectedAccounts.getFirst()[1];
+		} else {
+			name = request.customerName().trim();
+			phone = request.phoneNumber() == null ? "" : request.phoneNumber().trim();
+			String digits = phone.replaceAll("[^0-9]", "");
+			if (name.length() < 2 || digits.isBlank()) {
+				throw badRequest("Enter a valid guest name and phone number.");
+			}
+		}
 		if (request.amount().scale() > 2) throw badRequest("Debt amount must have no more than two decimal places.");
-		UUID accountId = jdbc.query("""
-				SELECT id FROM customer_accounts
-				WHERE regexp_replace(coalesce(phone_number, ''), '[^0-9]', '', 'g') = ?
-				ORDER BY id LIMIT 1
-				""", (rs, row) -> rs.getObject("id", UUID.class), digits).stream().findFirst().orElse(null);
 		UUID debtId = UUID.randomUUID();
 		jdbc.update("""
 				INSERT INTO manual_customer_debts
 				    (id, customer_account_id, customer_name, phone_number, description, total_amount, created_by)
 				VALUES (?, ?, ?, ?, ?, ?, ?)
-				""", debtId, accountId, name, phone, request.description().trim(), request.amount(), actor);
+			""", debtId, request.customerAccountId(), name, phone, request.description().trim(), request.amount(), actor);
 		return jdbc.queryForObject("""
 				SELECT id, description, total_amount, 0::numeric AS paid_amount,
 				       total_amount AS balance, created_at
@@ -726,7 +735,7 @@ public class AdminManagementService {
 	}
 
 	@Transactional
-	public void sendDebtReminder(UUID customerId, String type) {
+	public DebtReminderResult sendDebtReminder(UUID customerId, String type) {
 		String groupKey = customerGroupKey(customerId, type);
 		BigDecimal totalBalance = jdbc.queryForObject(CUSTOMER_GROUPS + """
 				SELECT coalesce(dt.debt, 0)
@@ -738,7 +747,7 @@ public class AdminManagementService {
 		}
 		if ("ACCOUNTS".equals(type)) {
 			notificationService.notifyAccountDebtReminder(customerId, totalBalance);
-			return;
+			return new DebtReminderResult(true, null);
 		}
 		UUID bookingId = jdbc.query("""
 				SELECT b.id
@@ -751,10 +760,13 @@ public class AdminManagementService {
 				ORDER BY b.created_at DESC, b.id DESC LIMIT 1
 				""", (rs, row) -> rs.getObject("id", UUID.class), groupKey).stream().findFirst().orElse(null);
 		if (bookingId == null) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT,
-					"This customer has no registered account or guest booking for notifications.");
+			return new DebtReminderResult(false, "NO_GUEST_BOOKING");
 		}
 		notificationService.notifyDebtReminder(bookingId, totalBalance);
+		return new DebtReminderResult(true, null);
+	}
+
+	public record DebtReminderResult(boolean sent, String reason) {
 	}
 
 	@Transactional
