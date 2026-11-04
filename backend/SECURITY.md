@@ -54,6 +54,39 @@ The limiter is bounded and in-memory, so its counts are per backend process.
 It is intended for the initial single-instance deployment and is not a global
 limit across multiple replicas.
 
+## Production database roles
+
+Run production with the `prod` profile. It requires `DB_URL`, `DB_USERNAME`,
+`DB_PASSWORD`, `DB_MIGRATOR_USERNAME`, and `DB_MIGRATOR_PASSWORD`. Use a
+dedicated runtime database role for the application and a separate migration
+role for Flyway. The runtime role should have only the table and sequence
+privileges the application needs, including CRUD access to the Spring Session
+tables; it must not be a PostgreSQL superuser or own the schema. The migration
+role needs the DDL privileges required by Flyway.
+Use a TLS-verified PostgreSQL connection in `DB_URL` when the database is
+remote. Never reuse the local development `postgres` role in production.
+
+## SQL injection review
+
+All user-supplied values in JDBC queries must be passed as bind parameters
+(`?`) or named parameters. Do not concatenate request values into SQL, table
+names, column names, sort expressions, or predicates. Where a query needs a
+different structure, choose between fixed SQL statements in code. The
+notification recipient queries follow this rule and bind both the account type
+and account ID. The sales report's generated `IN` clause only generates `?`
+markers from the number of already-loaded booking IDs; the IDs themselves are
+still passed separately as parameters.
+
+The `prod` profile sends a restrictive Content Security Policy and baseline
+Referrer/Permissions policies. Keep the policy synchronized with any newly
+introduced external image, font, or script host; avoid adding third-party
+scripts to the application.
+
+HTTP sessions are stored in PostgreSQL by Spring Session. The optional
+"remember me" login setting extends both the session inactivity limit and the
+browser cookie to 30 days; ordinary sessions remain limited to 30 minutes.
+Flyway migration `V25` creates the session tables.
+
 Tests use the `test` profile, which disables automatic owner bootstrap. The
 bootstrap integration tests create a separately named PostgreSQL schema and
 drop it after execution.

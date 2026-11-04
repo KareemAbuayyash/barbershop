@@ -738,19 +738,25 @@ public class NotificationService {
 		int safePage = Math.max(page, 0);
 		int size = Math.max(1, Math.min(requestedSize, 50));
 		Recipient recipient = resolveRecipient(username, owner);
-		String predicate = owner ? "owner_account_id = ?" : "customer_account_id = ?";
-		long total = jdbc.queryForObject(
-				"SELECT count(*) FROM app_notifications WHERE " + predicate,
-				Long.class, recipient.id());
-		long unread = jdbc.queryForObject(
-				"SELECT count(*) FROM app_notifications WHERE " + predicate + " AND read_at IS NULL",
-				Long.class, recipient.id());
+		long total = jdbc.queryForObject("""
+				SELECT count(*) FROM app_notifications
+				WHERE (? = 'OWNER' AND owner_account_id = ?)
+				   OR (? = 'CUSTOMER' AND customer_account_id = ?)
+				""", Long.class, recipient.type(), recipient.id(), recipient.type(), recipient.id());
+		long unread = jdbc.queryForObject("""
+				SELECT count(*) FROM app_notifications
+				WHERE read_at IS NULL
+				  AND ((? = 'OWNER' AND owner_account_id = ?)
+				       OR (? = 'CUSTOMER' AND customer_account_id = ?))
+				""", Long.class, recipient.type(), recipient.id(), recipient.type(), recipient.id());
 		List<NotificationItem> content = jdbc.query("""
 				SELECT id, event_type, title, body, target_path, created_at, read_at
-				FROM app_notifications WHERE %s
+				FROM app_notifications
+				WHERE (? = 'OWNER' AND owner_account_id = ?)
+				   OR (? = 'CUSTOMER' AND customer_account_id = ?)
 				ORDER BY created_at DESC, id DESC
 				OFFSET ? LIMIT ?
-				""".formatted(predicate), (rs, row) -> new NotificationItem(
+				""", (rs, row) -> new NotificationItem(
 				rs.getObject("id", UUID.class),
 				rs.getString("event_type"),
 				rs.getString("title"),
@@ -758,7 +764,7 @@ public class NotificationService {
 				rs.getString("target_path"),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("read_at") == null ? null : rs.getTimestamp("read_at").toInstant()),
-				recipient.id(), (long) safePage * size, size);
+				recipient.type(), recipient.id(), recipient.type(), recipient.id(), (long) safePage * size, size);
 		return new NotificationCenter(content, unread, safePage, size, total,
 				(int) Math.ceil((double) total / size));
 	}
@@ -766,11 +772,12 @@ public class NotificationService {
 	@Transactional
 	public void markRead(String username, boolean owner, UUID notificationId) {
 		Recipient recipient = resolveRecipient(username, owner);
-		String predicate = owner ? "owner_account_id = ?" : "customer_account_id = ?";
 		int updated = jdbc.update("""
 				UPDATE app_notifications SET read_at = coalesce(read_at, CURRENT_TIMESTAMP)
-				WHERE id = ? AND %s
-				""".formatted(predicate), notificationId, recipient.id());
+				WHERE id = ?
+				  AND ((? = 'OWNER' AND owner_account_id = ?)
+				       OR (? = 'CUSTOMER' AND customer_account_id = ?))
+				""", notificationId, recipient.type(), recipient.id(), recipient.type(), recipient.id());
 		if (updated == 0) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found.");
 		}
@@ -779,11 +786,12 @@ public class NotificationService {
 	@Transactional
 	public void markAllRead(String username, boolean owner) {
 		Recipient recipient = resolveRecipient(username, owner);
-		String predicate = owner ? "owner_account_id = ?" : "customer_account_id = ?";
 		jdbc.update("""
 				UPDATE app_notifications SET read_at = CURRENT_TIMESTAMP
-				WHERE %s AND read_at IS NULL
-				""".formatted(predicate), recipient.id());
+				WHERE read_at IS NULL
+				  AND ((? = 'OWNER' AND owner_account_id = ?)
+				       OR (? = 'CUSTOMER' AND customer_account_id = ?))
+				""", recipient.type(), recipient.id(), recipient.type(), recipient.id());
 	}
 
 	@Transactional(readOnly = true)
@@ -791,12 +799,13 @@ public class NotificationService {
 		Recipient recipient = resolveRecipient(username, owner);
 		Map<String, Boolean> preferences = new LinkedHashMap<>();
 		preferenceTypes(owner).forEach(type -> preferences.put(type, Boolean.TRUE));
-		String predicate = owner ? "owner_account_id = ?" : "customer_account_id = ?";
 		jdbc.query("""
-				SELECT event_type, push_enabled FROM notification_preferences WHERE %s
-				""".formatted(predicate),
+				SELECT event_type, push_enabled FROM notification_preferences
+				WHERE (? = 'OWNER' AND owner_account_id = ?)
+				   OR (? = 'CUSTOMER' AND customer_account_id = ?)
+				""",
 				(rs, row) -> Map.entry(rs.getString("event_type"), rs.getBoolean("push_enabled")),
-				recipient.id())
+				recipient.type(), recipient.id(), recipient.type(), recipient.id())
 				.forEach(entry -> preferences.put(entry.getKey(), entry.getValue()));
 		return new NotificationPreferences(preferences);
 	}
@@ -1306,11 +1315,13 @@ public class NotificationService {
 	}
 
 	private Recipient resolveRecipient(String username, boolean owner) {
-		String table = owner ? "management_accounts" : "customer_accounts";
-		String roleClause = owner ? " AND role = 'ROLE_OWNER'" : "";
-		List<UUID> ids = jdbc.query(
-				"SELECT id FROM " + table + " WHERE username_normalized = ? AND enabled = TRUE" + roleClause,
-				(rs, row) -> rs.getObject("id", UUID.class), username);
+		List<UUID> ids = owner
+				? jdbc.query(
+						"SELECT id FROM management_accounts WHERE username_normalized = ? AND enabled = TRUE AND role = ?",
+						(rs, row) -> rs.getObject("id", UUID.class), username, "ROLE_OWNER")
+				: jdbc.query(
+						"SELECT id FROM customer_accounts WHERE username_normalized = ? AND enabled = TRUE",
+						(rs, row) -> rs.getObject("id", UUID.class), username);
 		if (ids.isEmpty()) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Notification account is unavailable.");
 		}

@@ -1,7 +1,6 @@
 package com.barbershop.backend.security;
 
 import java.util.List;
-import java.time.Duration;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
@@ -14,9 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -32,12 +29,41 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfAuthenticationStrategy;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.CookieSerializer.CookieValue;
+import org.springframework.session.web.http.DefaultCookieSerializer;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 
 @Configuration
 @EnableConfigurationProperties({OwnerBootstrapProperties.class, RateLimitProperties.class})
 public class SecurityConfiguration {
 
+	static final String REMEMBER_ME_COOKIE_REQUEST_ATTRIBUTE = "barbershop.remember-me-cookie";
+	private static final int REMEMBERED_COOKIE_AGE_SECONDS = 30 * 24 * 60 * 60;
 	private static final Logger LOGGER = LoggerFactory.getLogger(SecurityConfiguration.class);
+
+	@Bean
+	CookieSerializer springSessionCookieSerializer(Environment environment) {
+		boolean secureCookie = environment.getProperty(
+				"server.servlet.session.cookie.secure", Boolean.class, false);
+		DefaultCookieSerializer serializer = new DefaultCookieSerializer() {
+			@Override
+			public void writeCookieValue(CookieValue cookieValue) {
+				if (Boolean.TRUE.equals(cookieValue.getRequest()
+						.getAttribute(REMEMBER_ME_COOKIE_REQUEST_ATTRIBUTE))) {
+					cookieValue.setCookieMaxAge(REMEMBERED_COOKIE_AGE_SECONDS);
+				}
+				super.writeCookieValue(cookieValue);
+			}
+		};
+		serializer.setCookiePath("/");
+		serializer.setSameSite("Lax");
+		serializer.setUseHttpOnlyCookie(true);
+		serializer.setUseSecureCookie(secureCookie);
+		return serializer;
+	}
 
 	@Bean
 	HttpSessionCsrfTokenRepository csrfTokenRepository() {
@@ -74,7 +100,8 @@ public class SecurityConfiguration {
 			HttpSessionCsrfTokenRepository csrfTokenRepository,
 			SecurityContextRepository securityContextRepository,
 			ApiSecurityErrorHandler securityErrorHandler,
-			NotificationService notificationService) throws Exception {
+			NotificationService notificationService,
+			Environment environment) throws Exception {
 		http
 				.authorizeHttpRequests(authorize -> authorize
 						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
@@ -118,6 +145,20 @@ public class SecurityConfiguration {
 						.sessionFixation(fixation -> fixation.changeSessionId()))
 				.csrf(csrf -> csrf
 						.csrfTokenRepository(csrfTokenRepository))
+				.headers(headers -> {
+					headers.addHeaderWriter(new StaticHeadersWriter(
+							"Referrer-Policy", "strict-origin-when-cross-origin"));
+					headers.addHeaderWriter(new StaticHeadersWriter(
+							"Permissions-Policy", "camera=(self), microphone=(), geolocation=()"));
+					if (environment.acceptsProfiles(Profiles.of("prod"))) {
+						headers.addHeaderWriter(new StaticHeadersWriter("Content-Security-Policy",
+								"default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+									+ "form-action 'self'; script-src 'self'; connect-src 'self'; "
+									+ "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+									+ "font-src 'self' data: https://fonts.gstatic.com; "
+									+ "img-src 'self' data: blob: https://images.unsplash.com; worker-src 'self' blob:;"));
+					}
+				})
 				.exceptionHandling(exceptions -> exceptions
 						.authenticationEntryPoint(securityErrorHandler)
 						.accessDeniedHandler(securityErrorHandler))
@@ -136,21 +177,6 @@ public class SecurityConfiguration {
 									LOGGER.warn("Unable to detach this browser's account push subscriptions during logout.", exception);
 								}
 							}
-							var cookieConfig = request.getServletContext().getSessionCookieConfig();
-							String cookieName = cookieConfig.getName() == null || cookieConfig.getName().isBlank()
-									? "JSESSIONID"
-									: cookieConfig.getName();
-							String cookiePath = cookieConfig.getPath() == null || cookieConfig.getPath().isBlank()
-									? "/"
-									: cookieConfig.getPath();
-							ResponseCookie expiredCookie = ResponseCookie.from(cookieName, "")
-									.httpOnly(cookieConfig.isHttpOnly())
-									.secure(cookieConfig.isSecure())
-									.path(cookiePath)
-									.sameSite("Lax")
-									.maxAge(Duration.ZERO)
-									.build();
-							response.setHeader(HttpHeaders.SET_COOKIE, expiredCookie.toString());
 							response.setStatus(HttpServletResponse.SC_NO_CONTENT);
 						}))
 				.formLogin(form -> form.disable());
